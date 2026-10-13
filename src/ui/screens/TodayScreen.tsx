@@ -11,6 +11,7 @@ import { BleedingIntensity, CentiCelsius, DayEntry, DisturbanceType, MucusAppear
 import { Chip } from '../components/Chip';
 import { CycleRing } from '../components/CycleRing';
 import { STRINGS } from '../strings.tr';
+import { evaluateInAppNotices, exportCalendarEventToDevice } from '../../app/reminders';
 
 export function TodayScreen() {
   const selectedDate = selectedDateSignal.value;
@@ -227,6 +228,34 @@ export function TodayScreen() {
       </div>
 
       <div style={{ padding: '16px', maxWidth: '500px', margin: '0 auto' }}>
+        {/* In-App Notices */}
+        {evaluateInAppNotices(
+          currentEntry !== undefined && (currentEntry.bleeding !== undefined || currentEntry.bbt !== undefined),
+          daysUntilNextPeriod,
+          settings.lastBackupDate
+        ).map((notice) => (
+          <div
+            key={notice.id}
+            style={{
+              backgroundColor: 'var(--accent-surface)',
+              border: '1px solid var(--accent-primary)',
+              borderRadius: 'var(--radius-md)',
+              padding: '12px 14px',
+              marginBottom: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            }}
+          >
+            <strong style={{ fontSize: '13px', color: 'var(--accent-primary)' }}>
+              🔔 {notice.title}
+            </strong>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+              {notice.message}
+            </p>
+          </div>
+        ))}
+
         {/* Cycle Ring Hero */}
         <CycleRing
           cycleDay={evaluation.currentCycleDay}
@@ -234,6 +263,34 @@ export function TodayScreen() {
           daysUntilPeriod={daysUntilNextPeriod}
           isPeriodDueToday={isPeriodDueToday}
         />
+
+        {/* Calendar Quick Add Button */}
+        {evaluation.prediction && (
+          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                exportCalendarEventToDevice({
+                  startDate: evaluation.prediction.nextPeriodStartDate,
+                  title: 'Hatırlatıcı',
+                  description: 'Tahmini döngü takip hatırlatıcısı.',
+                  alarmMinutesBefore: 0,
+                });
+              }}
+              style={{
+                background: 'none',
+                border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--radius-full)',
+                padding: '8px 16px',
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              📅 Takvime Hatırlatıcı Ekle (Samsung/Google Calendar)
+            </button>
+          </div>
+        )}
 
         {/* 1. Bleeding Intensity Card */}
         <section
