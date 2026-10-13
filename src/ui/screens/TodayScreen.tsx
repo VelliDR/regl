@@ -1,8 +1,10 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import {
+  dbErrorSignal,
   entriesMapSignal,
   evaluationSignal,
   persistDayEntry,
+  removeDayEntry,
   selectedDateSignal,
   settingsSignal,
 } from "../../app/state";
@@ -23,11 +25,36 @@ import {
   exportCalendarEventToDevice,
 } from "../../app/reminders";
 
+function isDayEntryEmpty(entry: DayEntry): boolean {
+  const hasBleeding = Boolean(entry.bleeding);
+  const hasBbt = Boolean(entry.bbt && !entry.bbt.excluded);
+  const hasMucus = Boolean(entry.mucus);
+  const hasSymptoms = Boolean(entry.symptoms && entry.symptoms.length > 0);
+  const hasMood = Boolean(entry.mood && entry.mood.length > 0);
+  const hasSex = Boolean(entry.sex && entry.sex !== "none");
+  const hasNote = Boolean(entry.note && entry.note.trim().length > 0);
+  const hasCervix = Boolean(entry.cervix);
+  const hasOverride = Boolean(entry.cycleStartOverride);
+
+  return (
+    !hasBleeding &&
+    !hasBbt &&
+    !hasMucus &&
+    !hasSymptoms &&
+    !hasMood &&
+    !hasSex &&
+    !hasNote &&
+    !hasCervix &&
+    !hasOverride
+  );
+}
+
 export function TodayScreen() {
   const selectedDate = selectedDateSignal.value;
   const evaluation = evaluationSignal.value;
   const settings = settingsSignal.value;
   const entriesMap = entriesMapSignal.value;
+  const dbError = dbErrorSignal.value;
 
   const currentEntry = entriesMap.get(selectedDate);
 
@@ -70,8 +97,15 @@ export function TodayScreen() {
     currentEntry?.cycleStartOverride ?? false,
   );
 
+  const noteTimerRef = useRef<number | null>(null);
+
   // Re-sync local state whenever the selected date changes
   useEffect(() => {
+    if (noteTimerRef.current) {
+      window.clearTimeout(noteTimerRef.current);
+      noteTimerRef.current = null;
+    }
+
     const entry = entriesMap.get(selectedDate);
     setBleeding(entry?.bleeding);
     setHasBbt(entry?.bbt !== undefined);
@@ -86,9 +120,15 @@ export function TodayScreen() {
     setSex(entry?.sex);
     setNote(entry?.note ?? "");
     setCycleOverride(entry?.cycleStartOverride ?? false);
+
+    return () => {
+      if (noteTimerRef.current) {
+        window.clearTimeout(noteTimerRef.current);
+      }
+    };
   }, [selectedDate, entriesMap]);
 
-  // Auto-save helper
+  // Auto-save helper with automatic empty record pruning
   const saveCurrent = (patch: Partial<DayEntry>) => {
     const updated: DayEntry = {
       date: selectedDate,
@@ -120,7 +160,47 @@ export function TodayScreen() {
       ...patch,
     };
 
-    persistDayEntry(updated);
+    if (isDayEntryEmpty(updated)) {
+      removeDayEntry(selectedDate);
+    } else {
+      persistDayEntry(updated);
+    }
+  };
+
+  const handleNoteChange = (val: string) => {
+    setNote(val);
+    if (noteTimerRef.current) {
+      window.clearTimeout(noteTimerRef.current);
+    }
+    noteTimerRef.current = window.setTimeout(() => {
+      saveCurrent({ note: val.trim().length > 0 ? val.trim() : undefined });
+    }, 350);
+  };
+
+  const handleNoteBlur = () => {
+    if (noteTimerRef.current) {
+      window.clearTimeout(noteTimerRef.current);
+      noteTimerRef.current = null;
+    }
+    saveCurrent({ note: note.trim().length > 0 ? note.trim() : undefined });
+  };
+
+  const handleClearDay = () => {
+    if (
+      typeof window !== "undefined" &&
+      window.confirm("Bu güne ait tüm kayıtları silmek istediğinizden emin misiniz?")
+    ) {
+      setBleeding(undefined);
+      setHasBbt(false);
+      setMucusSens(undefined);
+      setMucusApp(undefined);
+      setSymptoms([]);
+      setMood([]);
+      setSex(undefined);
+      setNote("");
+      setCycleOverride(false);
+      removeDayEntry(selectedDate);
+    }
   };
 
   const handlePrevDay = () => {
@@ -270,6 +350,25 @@ export function TodayScreen() {
       </div>
 
       <div style={{ padding: "16px", maxWidth: "500px", margin: "0 auto" }}>
+        {/* Database Error Banner */}
+        {dbError && (
+          <div
+            style={{
+              backgroundColor: "var(--accent-surface)",
+              color: "var(--accent-primary)",
+              padding: "10px 14px",
+              borderRadius: "var(--radius-sm)",
+              fontSize: "12px",
+              marginBottom: "12px",
+              textAlign: "center",
+              fontWeight: "600",
+              border: "1px solid var(--accent-primary)",
+            }}
+          >
+            ⚠️ {dbError}
+          </div>
+        )}
+
         {/* In-App Notices */}
         {evaluateInAppNotices(
           currentEntry !== undefined &&
@@ -851,11 +950,10 @@ export function TodayScreen() {
           <textarea
             value={note}
             placeholder="Bugün nasıl hissediyorsunuz? Not ekleyin..."
-            onChange={(e) => {
-              const val = (e.target as HTMLTextAreaElement).value;
-              setNote(val);
-              saveCurrent({ note: val.trim() });
+            onInput={(e) => {
+              handleNoteChange((e.target as HTMLTextAreaElement).value);
             }}
+            onBlur={handleNoteBlur}
             style={{
               width: "100%",
               minHeight: "80px",
@@ -870,6 +968,28 @@ export function TodayScreen() {
             }}
           />
         </section>
+
+        {/* Clear Day Entry Action */}
+        {currentEntry && (
+          <div style={{ textAlign: "center", marginTop: "16px", marginBottom: "24px" }}>
+            <button
+              type="button"
+              onClick={handleClearDay}
+              style={{
+                background: "none",
+                border: "1px dashed var(--border-strong)",
+                borderRadius: "var(--radius-sm)",
+                padding: "8px 16px",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+                cursor: "pointer",
+                transition: "color 0.15s ease",
+              }}
+            >
+              🗑️ Bu Günün Kaydını Temizle
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

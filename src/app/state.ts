@@ -3,7 +3,7 @@ import { evaluateCycleState, CycleEvaluation } from "../core/evaluate";
 import { DayEntry, ISODate } from "../core/types";
 import { dayRepository, DEFAULT_USER_SETTINGS } from "../data/repo";
 import { ValidatedUserSettings } from "../data/schemas";
-import { parseISODate } from "../core/date";
+import { compareISODate, parseISODate } from "../core/date";
 
 /**
  * Gets today's date formatted as ISODate using local time.
@@ -24,6 +24,7 @@ export const settingsSignal = signal<ValidatedUserSettings>(
   DEFAULT_USER_SETTINGS,
 );
 export const selectedDateSignal = signal<ISODate>(getLocalTodayISO());
+export const dbErrorSignal = signal<string | null>(null);
 
 export function lockApp(): void {
   isLockedSignal.value = true;
@@ -59,39 +60,58 @@ export const entriesMapSignal = computed<Map<ISODate, DayEntry>>(() => {
 export async function initializeAppState(): Promise<void> {
   if (isInitializedSignal.value) return;
 
-  const [days, settings] = await Promise.all([
-    dayRepository.getAllDays(),
-    dayRepository.getSettings(),
-  ]);
+  try {
+    const [days, settings] = await Promise.all([
+      dayRepository.getAllDays(),
+      dayRepository.getSettings(),
+    ]);
 
-  entriesSignal.value = days;
-  settingsSignal.value = settings;
-  isInitializedSignal.value = true;
+    days.sort((a, b) => compareISODate(a.date, b.date));
+    entriesSignal.value = days;
+    settingsSignal.value = settings;
+    isInitializedSignal.value = true;
+    dbErrorSignal.value = null;
+  } catch (err) {
+    dbErrorSignal.value = `Veritabanı başlatılamadı: ${(err as Error).message}`;
+    isInitializedSignal.value = true;
+  }
 }
 
 /**
  * Saves a day entry and updates in-memory signals reactively.
+ * Ensures the in-memory array remains strictly sorted chronologically.
  */
 export async function persistDayEntry(entry: DayEntry): Promise<void> {
-  await dayRepository.saveDay(entry);
+  try {
+    await dayRepository.saveDay(entry);
+    dbErrorSignal.value = null;
 
-  const current = [...entriesSignal.value];
-  const idx = current.findIndex((d) => d.date === entry.date);
-  if (idx >= 0) {
-    current[idx] = entry;
-  } else {
-    current.push(entry);
+    const current = [...entriesSignal.value];
+    const idx = current.findIndex((d) => d.date === entry.date);
+    if (idx >= 0) {
+      current[idx] = entry;
+    } else {
+      current.push(entry);
+    }
+
+    current.sort((a, b) => compareISODate(a.date, b.date));
+    entriesSignal.value = current;
+  } catch (err) {
+    dbErrorSignal.value = `Kayıt diske yazılamadı: ${(err as Error).message}`;
   }
-
-  entriesSignal.value = current;
 }
 
 /**
  * Deletes a day entry and updates in-memory signals reactively.
  */
 export async function removeDayEntry(date: ISODate): Promise<void> {
-  await dayRepository.deleteDay(date);
-  entriesSignal.value = entriesSignal.value.filter((d) => d.date !== date);
+  try {
+    await dayRepository.deleteDay(date);
+    dbErrorSignal.value = null;
+    entriesSignal.value = entriesSignal.value.filter((d) => d.date !== date);
+  } catch (err) {
+    dbErrorSignal.value = `Kayıt silinemedi: ${(err as Error).message}`;
+  }
 }
 
 /**
