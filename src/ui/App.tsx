@@ -7,6 +7,7 @@ import {
 import { BottomNav, ScreenTab } from './components/BottomNav';
 import { PwaPrompt } from './components/PwaPrompt';
 import { CalendarScreen } from './screens/CalendarScreen';
+import { ChartScreen } from './screens/ChartScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { TodayScreen } from './screens/TodayScreen';
 
@@ -51,16 +52,7 @@ export function App() {
             }}
           />
         )}
-        {currentTab === 'chart' && (
-          <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            <h2 style={{ fontSize: '18px', color: 'var(--text-primary)', marginBottom: '8px' }}>
-              📈 Semptotermal Döngü Grafiği
-            </h2>
-            <p style={{ fontSize: '14px' }}>
-              Çift eksenli BBT kaplama çizgisi ve mukus eğrisi görünümü Faz 6 kapsamında aktifleşecektir.
-            </p>
-          </div>
-        )}
+        {currentTab === 'chart' && <ChartScreen />}
         {currentTab === 'settings' && <SettingsScreen />}
       </main>
 
