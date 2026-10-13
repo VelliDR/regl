@@ -1,6 +1,6 @@
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { DayEntry, ISODate } from '../core/types';
-import { ValidatedUserSettings } from './schemas';
+import { openDB, DBSchema, IDBPDatabase } from "idb";
+import { DayEntry, ISODate } from "../core/types";
+import { ValidatedUserSettings } from "./schemas";
 
 export interface ReglDBSchema extends DBSchema {
   days: {
@@ -21,7 +21,7 @@ export interface ReglDBSchema extends DBSchema {
   };
 }
 
-export const DB_NAME = 'regl-db';
+export const DB_NAME = "regl-db";
 export const CURRENT_DB_VERSION = 1;
 
 let dbPromise: Promise<IDBPDatabase<ReglDBSchema>> | null = null;
@@ -37,14 +37,14 @@ export function getDb(): Promise<IDBPDatabase<ReglDBSchema>> {
         if (oldVersion < 1) {
           // Schema v1 initialization
           // The 'days' store does NOT index BBT or bleeding, keeping records unexposed.
-          if (!db.objectStoreNames.contains('days')) {
-            db.createObjectStore('days', { keyPath: 'date' });
+          if (!db.objectStoreNames.contains("days")) {
+            db.createObjectStore("days", { keyPath: "date" });
           }
-          if (!db.objectStoreNames.contains('settings')) {
-            db.createObjectStore('settings');
+          if (!db.objectStoreNames.contains("settings")) {
+            db.createObjectStore("settings");
           }
-          if (!db.objectStoreNames.contains('meta')) {
-            db.createObjectStore('meta');
+          if (!db.objectStoreNames.contains("meta")) {
+            db.createObjectStore("meta");
           }
         }
       },

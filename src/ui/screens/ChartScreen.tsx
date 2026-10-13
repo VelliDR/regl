@@ -1,12 +1,9 @@
-import { useState } from 'preact/hooks';
-import {
-  entriesSignal,
-  evaluationSignal,
-} from '../../app/state';
-import { addDays, daysBetween } from '../../core/date';
-import { evaluateCycleState } from '../../core/evaluate';
-import { deriveMucusCategory } from '../../core/sensiplan/mucus';
-import { DayEntry, ISODate } from '../../core/types';
+import { useState } from "preact/hooks";
+import { entriesSignal, evaluationSignal } from "../../app/state";
+import { addDays, daysBetween } from "../../core/date";
+import { evaluateCycleState } from "../../core/evaluate";
+import { deriveMucusCategory } from "../../core/sensiplan/mucus";
+import { DayEntry, ISODate } from "../../core/types";
 
 export function ChartScreen() {
   const evaluation = evaluationSignal.value;
@@ -17,14 +14,21 @@ export function ChartScreen() {
     : evaluation.completedCycles;
 
   const [selectedCycleId, setSelectedCycleId] = useState<number | undefined>(
-    evaluation.activeCycle?.id ?? cycles[cycles.length - 1]?.id
+    evaluation.activeCycle?.id ?? cycles[cycles.length - 1]?.id,
   );
 
-  const activeCycle = cycles.find((c) => c.id === selectedCycleId) ?? evaluation.activeCycle;
+  const activeCycle =
+    cycles.find((c) => c.id === selectedCycleId) ?? evaluation.activeCycle;
 
   if (!activeCycle) {
     return (
-      <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+      <div
+        style={{
+          padding: "32px 16px",
+          textAlign: "center",
+          color: "var(--text-muted)",
+        }}
+      >
         <p>Görselleştirilecek kayıtlı döngü bulunamadı.</p>
       </div>
     );
@@ -33,10 +37,17 @@ export function ChartScreen() {
   // Calculate cycle days from cycle.startDate to cycle.endDate (or last recorded day)
   const cycleStartDate = activeCycle.startDate;
   const cycleEndDate = activeCycle.endDate ?? addDays(cycleStartDate, 35);
-  const totalDays = Math.min(45, Math.max(15, daysBetween(cycleStartDate, cycleEndDate) + 1));
+  const totalDays = Math.min(
+    45,
+    Math.max(15, daysBetween(cycleStartDate, cycleEndDate) + 1),
+  );
 
   // Entries belonging to this cycle
-  const cycleDays: { dayIndex: number; date: ISODate; entry?: DayEntry | undefined }[] = [];
+  const cycleDays: {
+    dayIndex: number;
+    date: ISODate;
+    entry?: DayEntry | undefined;
+  }[] = [];
   const entriesMap = new Map<ISODate, DayEntry>();
   for (const e of allEntries) {
     entriesMap.set(e.date, e);
@@ -53,7 +64,7 @@ export function ChartScreen() {
 
   // Sensiplan evaluation for this specific cycle
   const cycleEval = evaluateCycleState(allEntries, cycleStartDate, {
-    trackingMode: 'symptothermal',
+    trackingMode: "symptothermal",
   });
   const sensi = cycleEval.sensiplan;
 
@@ -83,7 +94,14 @@ export function ChartScreen() {
   };
 
   // Temperature data points
-  const points: { x: number; y: number; temp: number; date: ISODate; excluded: boolean; dayIdx: number }[] = [];
+  const points: {
+    x: number;
+    y: number;
+    temp: number;
+    date: ISODate;
+    excluded: boolean;
+    dayIdx: number;
+  }[] = [];
   for (const cd of cycleDays) {
     if (cd.entry?.bbt) {
       points.push({
@@ -100,32 +118,54 @@ export function ChartScreen() {
   // Build SVG path
   const pathD = points
     .filter((p) => !p.excluded)
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-    .join(' ');
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
 
   const coverlineY = sensi?.temperature.coverline
     ? getYForTemp(sensi.temperature.coverline)
     : undefined;
 
   return (
-    <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto', paddingBottom: '90px' }}>
+    <div
+      style={{
+        padding: "16px",
+        maxWidth: "600px",
+        margin: "0 auto",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Header and Cycle Selector */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "16px",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "18px",
+            fontWeight: "800",
+            color: "var(--text-primary)",
+          }}
+        >
           📈 Semptotermal Döngü Grafiği
         </h2>
         {cycles.length > 1 && (
           <select
             value={selectedCycleId}
-            onChange={(e) => setSelectedCycleId(Number((e.target as HTMLSelectElement).value))}
+            onChange={(e) =>
+              setSelectedCycleId(Number((e.target as HTMLSelectElement).value))
+            }
             style={{
-              padding: '6px 10px',
-              backgroundColor: 'var(--bg-elevated)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text-primary)',
-              fontSize: '13px',
-              fontWeight: '600',
+              padding: "6px 10px",
+              backgroundColor: "var(--bg-elevated)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-sm)",
+              color: "var(--text-primary)",
+              fontSize: "13px",
+              fontWeight: "600",
             }}
           >
             {cycles.map((c) => (
@@ -141,25 +181,38 @@ export function ChartScreen() {
       {sensi && (
         <section
           style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: '14px 16px',
-            border: `1px solid ${sensi.overallFertilityState === 'infertile' ? 'var(--fertile-color)' : 'var(--accent-primary)'}`,
-            marginBottom: '16px',
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "14px 16px",
+            border: `1px solid ${sensi.overallFertilityState === "infertile" ? "var(--fertile-color)" : "var(--accent-primary)"}`,
+            marginBottom: "16px",
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <span style={{ fontSize: '18px' }}>
-              {sensi.overallFertilityState === 'infertile' ? '🛡️' : '🌿'}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "6px",
+            }}
+          >
+            <span style={{ fontSize: "18px" }}>
+              {sensi.overallFertilityState === "infertile" ? "🛡️" : "🌿"}
             </span>
-            <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
-              Klinik Durum:{' '}
-              {sensi.overallFertilityState === 'infertile'
-                ? 'Luteal Kısır Dönem (Geç Ovülasyon)'
-                : 'Doğurgan Dönem (Pencere Açık)'}
+            <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>
+              Klinik Durum:{" "}
+              {sensi.overallFertilityState === "infertile"
+                ? "Luteal Kısır Dönem (Geç Ovülasyon)"
+                : "Doğurgan Dönem (Pencere Açık)"}
             </strong>
           </div>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "var(--text-secondary)",
+              lineHeight: "1.5",
+            }}
+          >
             {sensi.activeRuleExplanation}
           </p>
         </section>
@@ -168,15 +221,19 @@ export function ChartScreen() {
       {/* Responsive Horizontal Scroll Container for SVG */}
       <div
         style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border-subtle)',
-          padding: '12px 8px',
-          overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
+          backgroundColor: "var(--bg-surface)",
+          borderRadius: "var(--radius-md)",
+          border: "1px solid var(--border-subtle)",
+          padding: "12px 8px",
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        <svg width={chartWidth} height={chartHeight} style={{ display: 'block' }}>
+        <svg
+          width={chartWidth}
+          height={chartHeight}
+          style={{ display: "block" }}
+        >
           {/* Y Axis Grid lines (every 0.20 °C) */}
           {[3620, 3640, 3660, 3680, 3700, 3720].map((t) => {
             const y = getYForTemp(t);
@@ -224,7 +281,8 @@ export function ChartScreen() {
                 fontWeight="700"
                 textAnchor="end"
               >
-                Kaplama Çizgisi ({((sensi?.temperature.coverline ?? 0) / 100).toFixed(2)} °C)
+                Kaplama Çizgisi (
+                {((sensi?.temperature.coverline ?? 0) / 100).toFixed(2)} °C)
               </text>
             </g>
           )}
@@ -243,9 +301,12 @@ export function ChartScreen() {
 
           {/* Temperature Measurement Circles */}
           {points.map((p) => {
-            const isHigh = sensi?.temperature.highDates.includes(p.date) ?? false;
+            const isHigh =
+              sensi?.temperature.highDates.includes(p.date) ?? false;
             const highIndex =
-              isHigh && sensi ? sensi.temperature.highDates.indexOf(p.date) + 1 : undefined;
+              isHigh && sensi
+                ? sensi.temperature.highDates.indexOf(p.date) + 1
+                : undefined;
 
             return (
               <g key={p.date}>
@@ -253,10 +314,16 @@ export function ChartScreen() {
                   cx={p.x}
                   cy={p.y}
                   r={p.excluded ? 3.5 : 5}
-                  fill={p.excluded ? 'none' : isHigh ? 'var(--fertile-color)' : '#5ea2ef'}
-                  stroke={p.excluded ? 'var(--text-muted)' : '#ffffff'}
+                  fill={
+                    p.excluded
+                      ? "none"
+                      : isHigh
+                        ? "var(--fertile-color)"
+                        : "#5ea2ef"
+                  }
+                  stroke={p.excluded ? "var(--text-muted)" : "#ffffff"}
                   strokeWidth="1.5"
-                  strokeDasharray={p.excluded ? '2 2' : undefined}
+                  strokeDasharray={p.excluded ? "2 2" : undefined}
                 />
                 {/* 1HM, 2HM, 3HM Labels */}
                 {highIndex && (
@@ -291,7 +358,10 @@ export function ChartScreen() {
           {cycleDays.map((cd) => {
             const x = getXForDayIndex(cd.dayIndex);
             const mucusCat = cd.entry?.mucus
-              ? deriveMucusCategory(cd.entry.mucus.sensation, cd.entry.mucus.appearance)
+              ? deriveMucusCategory(
+                  cd.entry.mucus.sensation,
+                  cd.entry.mucus.appearance,
+                )
               : undefined;
 
             const isPeak = sensi?.mucus.peakDayDate === cd.date;
@@ -328,9 +398,9 @@ export function ChartScreen() {
                   <text
                     x={x}
                     y={chartHeight - 16}
-                    fill={isPeak ? 'var(--fertile-color)' : 'var(--text-muted)'}
+                    fill={isPeak ? "var(--fertile-color)" : "var(--text-muted)"}
                     fontSize="10"
-                    fontWeight={isPeak ? '800' : '500'}
+                    fontWeight={isPeak ? "800" : "500"}
                     textAnchor="middle"
                   >
                     {isPeak ? `${mucusCat}*` : mucusCat}
@@ -341,13 +411,28 @@ export function ChartScreen() {
           })}
 
           {/* Row Labels on Left */}
-          <text x="8" y={chartHeight - 45} fill="var(--text-muted)" fontSize="9">
+          <text
+            x="8"
+            y={chartHeight - 45}
+            fill="var(--text-muted)"
+            fontSize="9"
+          >
             Gün
           </text>
-          <text x="8" y={chartHeight - 31} fill="var(--accent-primary)" fontSize="9">
+          <text
+            x="8"
+            y={chartHeight - 31}
+            fill="var(--accent-primary)"
+            fontSize="9"
+          >
             Kan
           </text>
-          <text x="8" y={chartHeight - 16} fill="var(--text-muted)" fontSize="9">
+          <text
+            x="8"
+            y={chartHeight - 16}
+            fill="var(--text-muted)"
+            fontSize="9"
+          >
             Mukus
           </text>
         </svg>
@@ -356,29 +441,51 @@ export function ChartScreen() {
       {/* Sensiplan Chart Legend */}
       <div
         style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '12px',
-          marginTop: '16px',
-          fontSize: '12px',
-          color: 'var(--text-secondary)',
-          justifyContent: 'center',
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "12px",
+          marginTop: "16px",
+          fontSize: "12px",
+          color: "var(--text-secondary)",
+          justifyContent: "center",
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#5ea2ef' }} />
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              backgroundColor: "#5ea2ef",
+            }}
+          />
           <span>BBT Ölçümü</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--fertile-color)' }} />
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              backgroundColor: "var(--fertile-color)",
+            }}
+          />
           <span>1-2-3 Yüksek Ölçüm</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ borderTop: '2px dashed var(--accent-primary)', width: '16px', display: 'inline-block' }} />
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span
+            style={{
+              borderTop: "2px dashed var(--accent-primary)",
+              width: "16px",
+              display: "inline-block",
+            }}
+          />
           <span>Kaplama Çizgisi</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ fontWeight: '800', color: 'var(--fertile-color)' }}>*</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span style={{ fontWeight: "800", color: "var(--fertile-color)" }}>
+            *
+          </span>
           <span>Mukus Zirvesi</span>
         </div>
       </div>

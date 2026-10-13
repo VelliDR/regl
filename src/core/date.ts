@@ -1,4 +1,4 @@
-import { DayIndex, ISODate } from './types';
+import { DayIndex, ISODate } from "./types";
 
 // Regular expression for validating YYYY-MM-DD format
 const ISO_DATE_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -42,7 +42,9 @@ export function parseISODate(str: string): ISODate {
 
   const maxDays = getDaysInMonth(year, month);
   if (day < 1 || day > maxDays) {
-    throw new Error(`Invalid day: ${day} for month ${month} in year ${year} in date "${str}".`);
+    throw new Error(
+      `Invalid day: ${day} for month ${month} in year ${year} in date "${str}".`,
+    );
   }
 
   return str as ISODate;
@@ -79,7 +81,13 @@ export function dayIndexToISO(idx: DayIndex): ISODate {
   const z = idx + 719468;
   const era = Math.floor((z >= 0 ? z : z - 146096) / 146097);
   const doe = z - era * 146097; // [0, 146096]
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const yoe = Math.floor(
+    (doe -
+      Math.floor(doe / 1460) +
+      Math.floor(doe / 36524) -
+      Math.floor(doe / 146096)) /
+      365,
+  );
   const y = yoe + era * 400;
   const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
   const mp = Math.floor((5 * doy + 2) / 153);
@@ -87,9 +95,9 @@ export function dayIndexToISO(idx: DayIndex): ISODate {
   const m = mp < 10 ? mp + 3 : mp - 9;
   const finalY = m <= 2 ? y + 1 : y;
 
-  const yStr = String(finalY).padStart(4, '0');
-  const mStr = String(m).padStart(2, '0');
-  const dStr = String(d).padStart(2, '0');
+  const yStr = String(finalY).padStart(4, "0");
+  const mStr = String(m).padStart(2, "0");
+  const dStr = String(d).padStart(2, "0");
 
   return `${yStr}-${mStr}-${dStr}` as ISODate;
 }

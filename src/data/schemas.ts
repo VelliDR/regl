@@ -1,15 +1,31 @@
-import * as v from 'valibot';
+import * as v from "valibot";
 
-export const BleedingSchema = v.picklist(['spotting', 'light', 'medium', 'heavy']);
-export const MucusSensationSchema = v.picklist(['dry', 'nothing', 'moist', 'wet']);
-export const MucusAppearanceSchema = v.picklist(['none', 'thick', 'creamy', 'clear', 'stretchy']);
+export const BleedingSchema = v.picklist([
+  "spotting",
+  "light",
+  "medium",
+  "heavy",
+]);
+export const MucusSensationSchema = v.picklist([
+  "dry",
+  "nothing",
+  "moist",
+  "wet",
+]);
+export const MucusAppearanceSchema = v.picklist([
+  "none",
+  "thick",
+  "creamy",
+  "clear",
+  "stretchy",
+]);
 export const DisturbanceSchema = v.picklist([
-  'alcohol',
-  'illness',
-  'badSleep',
-  'lateMeasure',
-  'medication',
-  'travel',
+  "alcohol",
+  "illness",
+  "badSleep",
+  "lateMeasure",
+  "medication",
+  "travel",
 ]);
 
 export const BbtRecordSchema = v.object({
@@ -25,9 +41,9 @@ export const MucusRecordSchema = v.object({
 });
 
 export const CervixRecordSchema = v.object({
-  position: v.optional(v.picklist(['low', 'high'])),
-  firmness: v.optional(v.picklist(['firm', 'soft'])),
-  opening: v.optional(v.picklist(['closed', 'open'])),
+  position: v.optional(v.picklist(["low", "high"])),
+  firmness: v.optional(v.picklist(["firm", "soft"])),
+  opening: v.optional(v.picklist(["closed", "open"])),
 });
 
 export const DayEntrySchema = v.object({
@@ -39,23 +55,27 @@ export const DayEntrySchema = v.object({
   cervix: v.optional(CervixRecordSchema),
   symptoms: v.optional(v.array(v.string())),
   mood: v.optional(v.array(v.string())),
-  sex: v.optional(v.picklist(['none', 'protected', 'unprotected'])),
+  sex: v.optional(v.picklist(["none", "protected", "unprotected"])),
   note: v.optional(v.string()),
   updatedAt: v.number(),
 });
 
 export const UserSettingsSchema = v.object({
-  trackingMode: v.picklist(['basic', 'symptothermal']),
+  trackingMode: v.picklist(["basic", "symptothermal"]),
   defaultCycleLength: v.number(),
-  theme: v.picklist(['auto', 'dark', 'light']),
+  theme: v.picklist(["auto", "dark", "light"]),
   reminderBbtEnabled: v.boolean(),
   reminderBbtTime: v.string(), // '07:00'
   reminderPeriodDaysBefore: v.number(), // 2
   lastBackupDate: v.optional(v.string()),
+  onboardingCompleted: v.optional(v.boolean()),
+  lockEnabled: v.optional(v.boolean()),
+  lockEnvelopeJson: v.optional(v.string()),
+  lockAutoMinutes: v.optional(v.number()),
 });
 
 export const BackupPayloadSchema = v.object({
-  format: v.literal('regl-backup-v1'),
+  format: v.literal("regl-backup-v1"),
   exportedAt: v.string(),
   days: v.array(DayEntrySchema),
   settings: v.optional(UserSettingsSchema),

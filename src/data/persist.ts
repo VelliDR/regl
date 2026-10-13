@@ -6,8 +6,11 @@ export interface StorageStatus {
 }
 
 export async function checkAndRequestStoragePersistence(): Promise<StorageStatus> {
-  const canPersist = typeof navigator !== 'undefined' && 'storage' in navigator && 'persist' in navigator.storage;
-  
+  const canPersist =
+    typeof navigator !== "undefined" &&
+    "storage" in navigator &&
+    "persist" in navigator.storage;
+
   if (!canPersist) {
     return { isPersisted: false, canPersist: false };
   }
@@ -21,7 +24,7 @@ export async function checkAndRequestStoragePersistence(): Promise<StorageStatus
     let quotaBytes: number | undefined;
     let usageBytes: number | undefined;
 
-    if ('estimate' in navigator.storage) {
+    if ("estimate" in navigator.storage) {
       const estimate = await navigator.storage.estimate();
       quotaBytes = estimate.quota;
       usageBytes = estimate.usage;
@@ -34,7 +37,7 @@ export async function checkAndRequestStoragePersistence(): Promise<StorageStatus
       usageBytes,
     };
   } catch (err) {
-    console.error('Storage persistence check failed:', err);
+    console.error("Storage persistence check failed:", err);
     return { isPersisted: false, canPersist: true };
   }
 }

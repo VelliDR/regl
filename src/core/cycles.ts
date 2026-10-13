@@ -1,5 +1,5 @@
-import { addDays, compareISODate, daysBetween } from './date';
-import { BleedingIntensity, DayEntry, ISODate } from './types';
+import { addDays, compareISODate, daysBetween } from "./date";
+import { BleedingIntensity, DayEntry, ISODate } from "./types";
 
 export interface Cycle {
   readonly id: number; // 1-indexed sequential cycle number
@@ -17,7 +17,7 @@ export interface CyclePartitionResult {
 }
 
 function isSignificantBleeding(b?: BleedingIntensity): boolean {
-  return b === 'light' || b === 'medium' || b === 'heavy';
+  return b === "light" || b === "medium" || b === "heavy";
 }
 
 /**
@@ -35,7 +35,7 @@ export function calculateMedian(numbers: readonly number[]): number {
 
 /**
  * Segments raw daily entries into chronological cycles.
- * 
+ *
  * Rules applied:
  * 1. Cycle Day 1 is triggered by significant bleeding ('light' | 'medium' | 'heavy')
  *    or an explicit `cycleStartOverride: true`.
@@ -45,7 +45,9 @@ export function calculateMedian(numbers: readonly number[]): number {
  * 4. Completed cycle length = nextCycle.startDate - currentCycle.startDate.
  * 5. Outlier detection [P4]: cycles < 18 days or > 2 * median length are flagged as outliers.
  */
-export function partitionCycles(entries: readonly DayEntry[]): CyclePartitionResult {
+export function partitionCycles(
+  entries: readonly DayEntry[],
+): CyclePartitionResult {
   if (entries.length === 0) {
     return { completedCycles: [], allCycles: [] };
   }
@@ -61,7 +63,7 @@ export function partitionCycles(entries: readonly DayEntry[]): CyclePartitionRes
 
   for (let i = 0; i < sorted.length; i++) {
     const current = sorted[i]!;
-    
+
     // Explicit user override always starts a new cycle
     if (current.cycleStartOverride) {
       cycleStartDates.push(current.date);
@@ -104,7 +106,12 @@ export function partitionCycles(entries: readonly DayEntry[]): CyclePartitionRes
   }
 
   // Build Cycle objects
-  const rawCycles: { id: number; startDate: ISODate; endDate?: ISODate; length?: number }[] = [];
+  const rawCycles: {
+    id: number;
+    startDate: ISODate;
+    endDate?: ISODate;
+    length?: number;
+  }[] = [];
 
   for (let i = 0; i < cycleStartDates.length; i++) {
     const startDate = cycleStartDates[i]!;
@@ -120,7 +127,9 @@ export function partitionCycles(entries: readonly DayEntry[]): CyclePartitionRes
   }
 
   // Calculate outlier thresholds based on median of completed cycles
-  const completedLengths = rawCycles.filter((c) => c.length !== undefined).map((c) => c.length!);
+  const completedLengths = rawCycles
+    .filter((c) => c.length !== undefined)
+    .map((c) => c.length!);
   const medianLength = calculateMedian(completedLengths);
 
   const completedCycles: Cycle[] = [];
@@ -149,7 +158,10 @@ export function partitionCycles(entries: readonly DayEntry[]): CyclePartitionRes
     if (c.length !== undefined) {
       if (c.length < 18) {
         isOutlier = true;
-      } else if (medianLength > 0 && c.length > Math.max(55, 2 * medianLength)) {
+      } else if (
+        medianLength > 0 &&
+        c.length > Math.max(55, 2 * medianLength)
+      ) {
         isOutlier = true;
       }
     }
@@ -170,7 +182,9 @@ export function partitionCycles(entries: readonly DayEntry[]): CyclePartitionRes
     }
   }
 
-  const allCycles = activeCycle ? [...completedCycles, activeCycle] : [...completedCycles];
+  const allCycles = activeCycle
+    ? [...completedCycles, activeCycle]
+    : [...completedCycles];
 
   return {
     completedCycles,

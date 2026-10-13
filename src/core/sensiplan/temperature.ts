@@ -1,11 +1,12 @@
-import { CentiCelsius, DayEntry, ISODate } from '../types';
+import { CentiCelsius, DayEntry, ISODate } from "../types";
 
 export interface TemperatureEvaluationResult {
   readonly isConfirmed: boolean;
   readonly coverline?: CentiCelsius; // e.g. 36.65 °C = 3665
   readonly firstHighDayDate?: ISODate; // 1st high measurement (1HM)
   readonly evaluationCompleteDate?: ISODate; // Date when 3rd/4th measurement satisfied
-  readonly appliedRule: 'T2_STANDARD' | 'T3_EXCEPTION_1' | 'T4_EXCEPTION_2' | 'NONE';
+  readonly appliedRule:
+    "T2_STANDARD" | "T3_EXCEPTION_1" | "T4_EXCEPTION_2" | "NONE";
   readonly sixLowDates: readonly ISODate[];
   readonly highDates: readonly ISODate[];
   readonly explanation: string;
@@ -17,27 +18,32 @@ export interface TemperatureEvaluationResult {
  * 0.2 °C = 20 centi-degrees.
  */
 export function evaluateTemperatureShift(
-  cycleEntries: readonly DayEntry[]
+  cycleEntries: readonly DayEntry[],
 ): TemperatureEvaluationResult {
   // Filter valid, non-excluded temperature readings in chronological order
   const validTempEntries = cycleEntries.filter(
-    (e) => e.bbt !== undefined && !e.bbt.excluded
+    (e) => e.bbt !== undefined && !e.bbt.excluded,
   );
 
   if (validTempEntries.length < 9) {
     // Need at least 6 low + 3 high measurements
     return {
       isConfirmed: false,
-      appliedRule: 'NONE',
+      appliedRule: "NONE",
       sixLowDates: [],
       highDates: [],
-      explanation: 'Yetersiz geçerli sıcaklık ölçümü (en az 6 düşük + 3 yüksek ölçüm gerekir).',
+      explanation:
+        "Yetersiz geçerli sıcaklık ölçümü (en az 6 düşük + 3 yüksek ölçüm gerekir).",
     };
   }
 
   // Iterate over potential 1HM (1st High Measurement) positions
   // 1HM must have at least 6 preceding valid measurements
-  for (let candidateIdx = 6; candidateIdx < validTempEntries.length; candidateIdx++) {
+  for (
+    let candidateIdx = 6;
+    candidateIdx < validTempEntries.length;
+    candidateIdx++
+  ) {
     // 6 preceding measurements for coverline
     const sixLows = validTempEntries.slice(candidateIdx - 6, candidateIdx);
     const lowTemps = sixLows.map((e) => e.bbt!.value);
@@ -72,7 +78,7 @@ export function evaluateTemperatureShift(
         coverline,
         firstHighDayDate: m1.date,
         evaluationCompleteDate: m3.date,
-        appliedRule: 'T2_STANDARD',
+        appliedRule: "T2_STANDARD",
         sixLowDates,
         highDates: [m1.date, m2.date, m3.date],
         explanation: `Temel kural (T2) sağlandı: Kaplama çizgisi ${(coverline / 100).toFixed(2)} °C üzerinde ardışık 3 yüksek ölçüm. 3. ölçüm +0.2 °C şartını karşıladı.`,
@@ -96,7 +102,7 @@ export function evaluateTemperatureShift(
           coverline,
           firstHighDayDate: m1.date,
           evaluationCompleteDate: m4.date,
-          appliedRule: 'T3_EXCEPTION_1',
+          appliedRule: "T3_EXCEPTION_1",
           sixLowDates,
           highDates: [m1.date, m2.date, m3.date, m4.date],
           explanation: `İstisna Kuralı 1 (T3) sağlandı: 3. ölçüm kaplama çizgisi üstünde kalıp +0.2 °C sağlayamadığı için 4. ölçüm beklendi ve kaplama çizgisi üzerinde doğrulandı.`,
@@ -119,7 +125,7 @@ export function evaluateTemperatureShift(
             coverline,
             firstHighDayDate: m1.date,
             evaluationCompleteDate: m4.date,
-            appliedRule: 'T4_EXCEPTION_2',
+            appliedRule: "T4_EXCEPTION_2",
             sixLowDates,
             highDates: [m1.date, m3.date, m4.date],
             explanation: `İstisna Kuralı 2 (T4) sağlandı: 2. gün yaşanan sıcaklık düşüşü atlandı ve kaplama çizgisi üzerinde +0.2 °C ek ölçüm ile doğrulandı.`,
@@ -136,7 +142,7 @@ export function evaluateTemperatureShift(
             coverline,
             firstHighDayDate: m1.date,
             evaluationCompleteDate: m4.date,
-            appliedRule: 'T4_EXCEPTION_2',
+            appliedRule: "T4_EXCEPTION_2",
             sixLowDates,
             highDates: [m1.date, m2.date, m4.date],
             explanation: `İstisna Kuralı 2 (T4) sağlandı: 3. gün yaşanan sıcaklık düşüşü atlandı ve kaplama çizgisi üzerinde +0.2 °C ek ölçüm ile doğrulandı.`,
@@ -148,9 +154,10 @@ export function evaluateTemperatureShift(
 
   return {
     isConfirmed: false,
-    appliedRule: 'NONE',
+    appliedRule: "NONE",
     sixLowDates: [],
     highDates: [],
-    explanation: 'Sıcaklık sıçraması henüz kurallara uygun olarak tamamlanmadı.',
+    explanation:
+      "Sıcaklık sıçraması henüz kurallara uygun olarak tamamlanmadı.",
   };
 }

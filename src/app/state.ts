@@ -1,9 +1,9 @@
-import { signal, computed } from '@preact/signals';
-import { evaluateCycleState, CycleEvaluation } from '../core/evaluate';
-import { DayEntry, ISODate } from '../core/types';
-import { dayRepository, DEFAULT_USER_SETTINGS } from '../data/repo';
-import { ValidatedUserSettings } from '../data/schemas';
-import { parseISODate } from '../core/date';
+import { signal, computed } from "@preact/signals";
+import { evaluateCycleState, CycleEvaluation } from "../core/evaluate";
+import { DayEntry, ISODate } from "../core/types";
+import { dayRepository, DEFAULT_USER_SETTINGS } from "../data/repo";
+import { ValidatedUserSettings } from "../data/schemas";
+import { parseISODate } from "../core/date";
 
 /**
  * Gets today's date formatted as ISODate using local time.
@@ -11,16 +11,27 @@ import { parseISODate } from '../core/date';
 export function getLocalTodayISO(): ISODate {
   const now = new Date();
   const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
   return parseISODate(`${year}-${month}-${day}`);
 }
 
 // Global Signals
 export const isInitializedSignal = signal<boolean>(false);
+export const isLockedSignal = signal<boolean>(true);
 export const entriesSignal = signal<DayEntry[]>([]);
-export const settingsSignal = signal<ValidatedUserSettings>(DEFAULT_USER_SETTINGS);
+export const settingsSignal = signal<ValidatedUserSettings>(
+  DEFAULT_USER_SETTINGS,
+);
 export const selectedDateSignal = signal<ISODate>(getLocalTodayISO());
+
+export function lockApp(): void {
+  isLockedSignal.value = true;
+}
+
+export function unlockApp(): void {
+  isLockedSignal.value = false;
+}
 
 // Reactive Computed Evaluation
 export const evaluationSignal = computed<CycleEvaluation>(() => {
@@ -86,7 +97,9 @@ export async function removeDayEntry(date: ISODate): Promise<void> {
 /**
  * Updates settings both in IndexedDB and in-memory.
  */
-export async function persistSettings(settings: ValidatedUserSettings): Promise<void> {
+export async function persistSettings(
+  settings: ValidatedUserSettings,
+): Promise<void> {
   await dayRepository.saveSettings(settings);
   settingsSignal.value = settings;
 }

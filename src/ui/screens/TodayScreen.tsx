@@ -1,17 +1,27 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useState } from "preact/hooks";
 import {
   entriesMapSignal,
   evaluationSignal,
   persistDayEntry,
   selectedDateSignal,
   settingsSignal,
-} from '../../app/state';
-import { addDays, daysBetween, parseISODate } from '../../core/date';
-import { BleedingIntensity, CentiCelsius, DayEntry, DisturbanceType, MucusAppearance, MucusSensation } from '../../core/types';
-import { Chip } from '../components/Chip';
-import { CycleRing } from '../components/CycleRing';
-import { STRINGS } from '../strings.tr';
-import { evaluateInAppNotices, exportCalendarEventToDevice } from '../../app/reminders';
+} from "../../app/state";
+import { addDays, daysBetween, parseISODate } from "../../core/date";
+import {
+  BleedingIntensity,
+  CentiCelsius,
+  DayEntry,
+  DisturbanceType,
+  MucusAppearance,
+  MucusSensation,
+} from "../../core/types";
+import { Chip } from "../components/Chip";
+import { CycleRing } from "../components/CycleRing";
+import { STRINGS } from "../strings.tr";
+import {
+  evaluateInAppNotices,
+  exportCalendarEventToDevice,
+} from "../../app/reminders";
 
 export function TodayScreen() {
   const selectedDate = selectedDateSignal.value;
@@ -22,21 +32,43 @@ export function TodayScreen() {
   const currentEntry = entriesMap.get(selectedDate);
 
   // Local state initialized from active day entry
-  const [bleeding, setBleeding] = useState<BleedingIntensity | undefined>(currentEntry?.bleeding);
-  const [bbtValue, setBbtValue] = useState<number>(currentEntry?.bbt ? currentEntry.bbt.value / 100 : 36.65);
-  const [hasBbt, setHasBbt] = useState<boolean>(currentEntry?.bbt !== undefined);
-  const [bbtTime, setBbtTime] = useState<string>(currentEntry?.bbt?.time ?? settings.reminderBbtTime);
-  const [bbtExcluded, setBbtExcluded] = useState<boolean>(currentEntry?.bbt?.excluded ?? false);
-  const [disturbances, setDisturbances] = useState<readonly DisturbanceType[]>(currentEntry?.bbt?.disturbances ?? []);
-  
-  const [mucusSens, setMucusSens] = useState<MucusSensation | undefined>(currentEntry?.mucus?.sensation);
-  const [mucusApp, setMucusApp] = useState<MucusAppearance | undefined>(currentEntry?.mucus?.appearance);
+  const [bleeding, setBleeding] = useState<BleedingIntensity | undefined>(
+    currentEntry?.bleeding,
+  );
+  const [bbtValue, setBbtValue] = useState<number>(
+    currentEntry?.bbt ? currentEntry.bbt.value / 100 : 36.65,
+  );
+  const [hasBbt, setHasBbt] = useState<boolean>(
+    currentEntry?.bbt !== undefined,
+  );
+  const [bbtTime, setBbtTime] = useState<string>(
+    currentEntry?.bbt?.time ?? settings.reminderBbtTime,
+  );
+  const [bbtExcluded, setBbtExcluded] = useState<boolean>(
+    currentEntry?.bbt?.excluded ?? false,
+  );
+  const [disturbances, setDisturbances] = useState<readonly DisturbanceType[]>(
+    currentEntry?.bbt?.disturbances ?? [],
+  );
 
-  const [symptoms, setSymptoms] = useState<readonly string[]>(currentEntry?.symptoms ?? []);
+  const [mucusSens, setMucusSens] = useState<MucusSensation | undefined>(
+    currentEntry?.mucus?.sensation,
+  );
+  const [mucusApp, setMucusApp] = useState<MucusAppearance | undefined>(
+    currentEntry?.mucus?.appearance,
+  );
+
+  const [symptoms, setSymptoms] = useState<readonly string[]>(
+    currentEntry?.symptoms ?? [],
+  );
   const [mood, setMood] = useState<readonly string[]>(currentEntry?.mood ?? []);
-  const [sex, setSex] = useState<'none' | 'protected' | 'unprotected' | undefined>(currentEntry?.sex);
-  const [note, setNote] = useState<string>(currentEntry?.note ?? '');
-  const [cycleOverride, setCycleOverride] = useState<boolean>(currentEntry?.cycleStartOverride ?? false);
+  const [sex, setSex] = useState<
+    "none" | "protected" | "unprotected" | undefined
+  >(currentEntry?.sex);
+  const [note, setNote] = useState<string>(currentEntry?.note ?? "");
+  const [cycleOverride, setCycleOverride] = useState<boolean>(
+    currentEntry?.cycleStartOverride ?? false,
+  );
 
   // Re-sync local state whenever the selected date changes
   useEffect(() => {
@@ -52,7 +84,7 @@ export function TodayScreen() {
     setSymptoms(entry?.symptoms ?? []);
     setMood(entry?.mood ?? []);
     setSex(entry?.sex);
-    setNote(entry?.note ?? '');
+    setNote(entry?.note ?? "");
     setCycleOverride(entry?.cycleStartOverride ?? false);
   }, [selectedDate, entriesMap]);
 
@@ -102,8 +134,8 @@ export function TodayScreen() {
   const handleTodayJump = () => {
     const now = new Date();
     const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
     selectedDateSignal.value = parseISODate(`${y}-${m}-${d}`);
   };
 
@@ -145,13 +177,17 @@ export function TodayScreen() {
   };
 
   const handleSymptomToggle = (sym: string) => {
-    const next = symptoms.includes(sym) ? symptoms.filter((s) => s !== sym) : [...symptoms, sym];
+    const next = symptoms.includes(sym)
+      ? symptoms.filter((s) => s !== sym)
+      : [...symptoms, sym];
     setSymptoms(next);
     saveCurrent({ symptoms: next });
   };
 
   const handleMoodToggle = (m: string) => {
-    const next = mood.includes(m) ? mood.filter((item) => item !== m) : [...mood, m];
+    const next = mood.includes(m)
+      ? mood.filter((item) => item !== m)
+      : [...mood, m];
     setMood(next);
     saveCurrent({ mood: next });
   };
@@ -163,17 +199,17 @@ export function TodayScreen() {
   const isPeriodDueToday = daysUntilNextPeriod === 0;
 
   return (
-    <div style={{ paddingBottom: '90px' }}>
+    <div style={{ paddingBottom: "90px" }}>
       {/* Date Header Navigation Bar */}
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 16px',
-          backgroundColor: 'var(--bg-surface)',
-          borderBottom: '1px solid var(--border-subtle)',
-          position: 'sticky',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          backgroundColor: "var(--bg-surface)",
+          borderBottom: "1px solid var(--border-subtle)",
+          position: "sticky",
           top: 0,
           zIndex: 50,
         }}
@@ -182,30 +218,36 @@ export function TodayScreen() {
           type="button"
           onClick={handlePrevDay}
           style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-primary)',
-            fontSize: '18px',
-            cursor: 'pointer',
-            padding: '8px 12px',
+            background: "none",
+            border: "none",
+            color: "var(--text-primary)",
+            fontSize: "18px",
+            cursor: "pointer",
+            padding: "8px 12px",
           }}
         >
           ‹
         </button>
-        <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+        <div style={{ textAlign: "center" }}>
+          <h2
+            style={{
+              fontSize: "16px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+            }}
+          >
             {selectedDate}
           </h2>
           <button
             type="button"
             onClick={handleTodayJump}
             style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent-primary)',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: 'pointer',
+              background: "none",
+              border: "none",
+              color: "var(--accent-primary)",
+              fontSize: "11px",
+              fontWeight: "600",
+              cursor: "pointer",
             }}
           >
             Bugüne Git
@@ -215,42 +257,52 @@ export function TodayScreen() {
           type="button"
           onClick={handleNextDay}
           style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-primary)',
-            fontSize: '18px',
-            cursor: 'pointer',
-            padding: '8px 12px',
+            background: "none",
+            border: "none",
+            color: "var(--text-primary)",
+            fontSize: "18px",
+            cursor: "pointer",
+            padding: "8px 12px",
           }}
         >
           ›
         </button>
       </div>
 
-      <div style={{ padding: '16px', maxWidth: '500px', margin: '0 auto' }}>
+      <div style={{ padding: "16px", maxWidth: "500px", margin: "0 auto" }}>
         {/* In-App Notices */}
         {evaluateInAppNotices(
-          currentEntry !== undefined && (currentEntry.bleeding !== undefined || currentEntry.bbt !== undefined),
+          currentEntry !== undefined &&
+            (currentEntry.bleeding !== undefined ||
+              currentEntry.bbt !== undefined),
           daysUntilNextPeriod,
-          settings.lastBackupDate
+          settings.lastBackupDate,
         ).map((notice) => (
           <div
             key={notice.id}
             style={{
-              backgroundColor: 'var(--accent-surface)',
-              border: '1px solid var(--accent-primary)',
-              borderRadius: 'var(--radius-md)',
-              padding: '12px 14px',
-              marginBottom: '14px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
+              backgroundColor: "var(--accent-surface)",
+              border: "1px solid var(--accent-primary)",
+              borderRadius: "var(--radius-md)",
+              padding: "12px 14px",
+              marginBottom: "14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
             }}
           >
-            <strong style={{ fontSize: '13px', color: 'var(--accent-primary)' }}>
+            <strong
+              style={{ fontSize: "13px", color: "var(--accent-primary)" }}
+            >
               🔔 {notice.title}
             </strong>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--text-secondary)",
+                lineHeight: "1.4",
+              }}
+            >
               {notice.message}
             </p>
           </div>
@@ -266,25 +318,25 @@ export function TodayScreen() {
 
         {/* Calendar Quick Add Button */}
         {evaluation.prediction && (
-          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+          <div style={{ textAlign: "center", marginBottom: "16px" }}>
             <button
               type="button"
               onClick={() => {
                 exportCalendarEventToDevice({
                   startDate: evaluation.prediction.nextPeriodStartDate,
-                  title: 'Hatırlatıcı',
-                  description: 'Tahmini döngü takip hatırlatıcısı.',
+                  title: "Hatırlatıcı",
+                  description: "Tahmini döngü takip hatırlatıcısı.",
                   alarmMinutesBefore: 0,
                 });
               }}
               style={{
-                background: 'none',
-                border: '1px solid var(--border-strong)',
-                borderRadius: 'var(--radius-full)',
-                padding: '8px 16px',
-                fontSize: '12px',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
+                background: "none",
+                border: "1px solid var(--border-strong)",
+                borderRadius: "var(--radius-full)",
+                padding: "8px 16px",
+                fontSize: "12px",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
               }}
             >
               📅 Takvime Hatırlatıcı Ekle (Samsung/Google Calendar)
@@ -295,41 +347,57 @@ export function TodayScreen() {
         {/* 1. Bleeding Intensity Card */}
         <section
           style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: '16px',
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            border: "1px solid var(--border-subtle)",
+            marginBottom: "16px",
           }}
         >
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+              marginBottom: "10px",
+            }}
+          >
             🩸 {STRINGS.today.bleeding}
           </h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             <Chip
               label={STRINGS.bleeding.spotting}
-              selected={bleeding === 'spotting'}
-              onToggle={() => handleBleedingToggle('spotting')}
+              selected={bleeding === "spotting"}
+              onToggle={() => handleBleedingToggle("spotting")}
             />
             <Chip
               label={STRINGS.bleeding.light}
-              selected={bleeding === 'light'}
-              onToggle={() => handleBleedingToggle('light')}
+              selected={bleeding === "light"}
+              onToggle={() => handleBleedingToggle("light")}
             />
             <Chip
               label={STRINGS.bleeding.medium}
-              selected={bleeding === 'medium'}
-              onToggle={() => handleBleedingToggle('medium')}
+              selected={bleeding === "medium"}
+              onToggle={() => handleBleedingToggle("medium")}
             />
             <Chip
               label={STRINGS.bleeding.heavy}
-              selected={bleeding === 'heavy'}
-              onToggle={() => handleBleedingToggle('heavy')}
+              selected={bleeding === "heavy"}
+              onToggle={() => handleBleedingToggle("heavy")}
             />
           </div>
 
-          <div style={{ marginTop: '12px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <div style={{ marginTop: "12px" }}>
+            <label
+              style={{
+                fontSize: "12px",
+                color: "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={cycleOverride}
@@ -345,21 +413,42 @@ export function TodayScreen() {
         </section>
 
         {/* 2. Symptothermal Mod: BBT Card */}
-        {settings.trackingMode === 'symptothermal' && (
+        {settings.trackingMode === "symptothermal" && (
           <section
             style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderRadius: 'var(--radius-md)',
-              padding: '16px',
-              border: '1px solid var(--border-subtle)',
-              marginBottom: '16px',
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-md)",
+              padding: "16px",
+              border: "1px solid var(--border-subtle)",
+              marginBottom: "16px",
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "12px",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: "14px",
+                  fontWeight: "700",
+                  color: "var(--text-primary)",
+                }}
+              >
                 🌡️ {STRINGS.today.bbt}
               </h3>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-secondary)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={hasBbt}
@@ -383,46 +472,73 @@ export function TodayScreen() {
             {hasBbt && (
               <div>
                 {/* Stepper Input */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', margin: '16px 0' }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "16px",
+                    margin: "16px 0",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => handleBbtStep(-0.05)}
                     style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: 'var(--radius-full)',
-                      border: '1px solid var(--border-strong)',
-                      backgroundColor: 'var(--bg-elevated)',
-                      color: 'var(--text-primary)',
-                      fontSize: '20px',
-                      cursor: 'pointer',
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid var(--border-strong)",
+                      backgroundColor: "var(--bg-elevated)",
+                      color: "var(--text-primary)",
+                      fontSize: "20px",
+                      cursor: "pointer",
                     }}
                   >
                     −
                   </button>
-                  <span style={{ fontSize: '32px', fontWeight: '800', color: 'var(--accent-primary)', minWidth: '120px', textAlign: 'center' }}>
+                  <span
+                    style={{
+                      fontSize: "32px",
+                      fontWeight: "800",
+                      color: "var(--accent-primary)",
+                      minWidth: "120px",
+                      textAlign: "center",
+                    }}
+                  >
                     {bbtValue.toFixed(2)} °C
                   </span>
                   <button
                     type="button"
                     onClick={() => handleBbtStep(0.05)}
                     style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: 'var(--radius-full)',
-                      border: '1px solid var(--border-strong)',
-                      backgroundColor: 'var(--bg-elevated)',
-                      color: 'var(--text-primary)',
-                      fontSize: '20px',
-                      cursor: 'pointer',
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid var(--border-strong)",
+                      backgroundColor: "var(--bg-elevated)",
+                      color: "var(--text-primary)",
+                      fontSize: "20px",
+                      cursor: "pointer",
                     }}
                   >
                     +
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Ölçüm Saati:</label>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <label
+                    style={{ fontSize: "12px", color: "var(--text-secondary)" }}
+                  >
+                    Ölçüm Saati:
+                  </label>
                   <input
                     type="time"
                     value={bbtTime}
@@ -439,31 +555,54 @@ export function TodayScreen() {
                       });
                     }}
                     style={{
-                      backgroundColor: 'var(--bg-elevated)',
-                      border: '1px solid var(--border-subtle)',
-                      color: 'var(--text-primary)',
-                      padding: '4px 8px',
-                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: "var(--bg-elevated)",
+                      border: "1px solid var(--border-subtle)",
+                      color: "var(--text-primary)",
+                      padding: "4px 8px",
+                      borderRadius: "var(--radius-sm)",
                     }}
                   />
                 </div>
 
                 {/* Disturbances */}
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-muted)",
+                    marginBottom: "8px",
+                  }}
+                >
                   Bozucu Etkenler (Algoritmik Dışlama Önerisi):
                 </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-                  {(Object.keys(STRINGS.disturbances) as DisturbanceType[]).map((dKey) => (
-                    <Chip
-                      key={dKey}
-                      label={STRINGS.disturbances[dKey]}
-                      selected={disturbances.includes(dKey)}
-                      onToggle={() => handleDisturbanceToggle(dKey)}
-                    />
-                  ))}
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "6px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  {(Object.keys(STRINGS.disturbances) as DisturbanceType[]).map(
+                    (dKey) => (
+                      <Chip
+                        key={dKey}
+                        label={STRINGS.disturbances[dKey]}
+                        selected={disturbances.includes(dKey)}
+                        onToggle={() => handleDisturbanceToggle(dKey)}
+                      />
+                    ),
+                  )}
                 </div>
 
-                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-secondary)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={bbtExcluded}
@@ -480,7 +619,8 @@ export function TodayScreen() {
                       });
                     }}
                   />
-                  Bu ölçümü kaplama çizgisi ve kural hesabından hariç tut (parantez içine al)
+                  Bu ölçümü kaplama çizgisi ve kural hesabından hariç tut
+                  (parantez içine al)
                 </label>
               </div>
             )}
@@ -488,41 +628,83 @@ export function TodayScreen() {
         )}
 
         {/* 3. Symptothermal Mod: Cervical Mucus Card */}
-        {settings.trackingMode === 'symptothermal' && (
+        {settings.trackingMode === "symptothermal" && (
           <section
             style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderRadius: 'var(--radius-md)',
-              padding: '16px',
-              border: '1px solid var(--border-subtle)',
-              marginBottom: '16px',
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-md)",
+              padding: "16px",
+              border: "1px solid var(--border-subtle)",
+              marginBottom: "16px",
             }}
           >
-            <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: "700",
+                color: "var(--text-primary)",
+                marginBottom: "10px",
+              }}
+            >
               💧 {STRINGS.today.mucus}
             </h3>
 
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Hissiyat:</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-              {(['dry', 'nothing', 'moist', 'wet'] as MucusSensation[]).map((sens) => (
-                <Chip
-                  key={sens}
-                  label={STRINGS.mucusSensation[sens]}
-                  selected={mucusSens === sens}
-                  onToggle={() => {
-                    const next = mucusSens === sens ? undefined : sens;
-                    setMucusSens(next);
-                    if (next && mucusApp) {
-                      saveCurrent({ mucus: { sensation: next, appearance: mucusApp } });
-                    }
-                  }}
-                />
-              ))}
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--text-muted)",
+                marginBottom: "6px",
+              }}
+            >
+              Hissiyat:
+            </p>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "6px",
+                marginBottom: "12px",
+              }}
+            >
+              {(["dry", "nothing", "moist", "wet"] as MucusSensation[]).map(
+                (sens) => (
+                  <Chip
+                    key={sens}
+                    label={STRINGS.mucusSensation[sens]}
+                    selected={mucusSens === sens}
+                    onToggle={() => {
+                      const next = mucusSens === sens ? undefined : sens;
+                      setMucusSens(next);
+                      if (next && mucusApp) {
+                        saveCurrent({
+                          mucus: { sensation: next, appearance: mucusApp },
+                        });
+                      }
+                    }}
+                  />
+                ),
+              )}
             </div>
 
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Görünüm:</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {(['none', 'thick', 'creamy', 'clear', 'stretchy'] as MucusAppearance[]).map((app) => (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--text-muted)",
+                marginBottom: "6px",
+              }}
+            >
+              Görünüm:
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {(
+                [
+                  "none",
+                  "thick",
+                  "creamy",
+                  "clear",
+                  "stretchy",
+                ] as MucusAppearance[]
+              ).map((app) => (
                 <Chip
                   key={app}
                   label={STRINGS.mucusAppearance[app]}
@@ -531,7 +713,9 @@ export function TodayScreen() {
                     const next = mucusApp === app ? undefined : app;
                     setMucusApp(next);
                     if (mucusSens && next) {
-                      saveCurrent({ mucus: { sensation: mucusSens, appearance: next } });
+                      saveCurrent({
+                        mucus: { sensation: mucusSens, appearance: next },
+                      });
                     }
                   }}
                 />
@@ -543,18 +727,27 @@ export function TodayScreen() {
         {/* 4. Physical Symptoms Card */}
         <section
           style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: '16px',
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            border: "1px solid var(--border-subtle)",
+            marginBottom: "16px",
           }}
         >
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+              marginBottom: "10px",
+            }}
+          >
             ⚡ {STRINGS.today.symptoms}
           </h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(Object.keys(STRINGS.symptoms) as (keyof typeof STRINGS.symptoms)[]).map((symKey) => (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {(
+              Object.keys(STRINGS.symptoms) as (keyof typeof STRINGS.symptoms)[]
+            ).map((symKey) => (
               <Chip
                 key={symKey}
                 label={STRINGS.symptoms[symKey]}
@@ -568,43 +761,59 @@ export function TodayScreen() {
         {/* 5. Mood Card */}
         <section
           style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: '16px',
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            border: "1px solid var(--border-subtle)",
+            marginBottom: "16px",
           }}
         >
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+              marginBottom: "10px",
+            }}
+          >
             ✨ {STRINGS.today.mood}
           </h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(Object.keys(STRINGS.mood) as (keyof typeof STRINGS.mood)[]).map((mKey) => (
-              <Chip
-                key={mKey}
-                label={STRINGS.mood[mKey]}
-                selected={mood.includes(mKey)}
-                onToggle={() => handleMoodToggle(mKey)}
-              />
-            ))}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {(Object.keys(STRINGS.mood) as (keyof typeof STRINGS.mood)[]).map(
+              (mKey) => (
+                <Chip
+                  key={mKey}
+                  label={STRINGS.mood[mKey]}
+                  selected={mood.includes(mKey)}
+                  onToggle={() => handleMoodToggle(mKey)}
+                />
+              ),
+            )}
           </div>
         </section>
 
         {/* 6. Sex Activity Card */}
         <section
           style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: '16px',
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            border: "1px solid var(--border-subtle)",
+            marginBottom: "16px",
           }}
         >
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+              marginBottom: "10px",
+            }}
+          >
             ❤️ {STRINGS.today.sex}
           </h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(['none', 'protected', 'unprotected'] as const).map((sVal) => (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {(["none", "protected", "unprotected"] as const).map((sVal) => (
               <Chip
                 key={sVal}
                 label={STRINGS.sex[sVal]}
@@ -622,14 +831,21 @@ export function TodayScreen() {
         {/* 7. Notes Card */}
         <section
           style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: '16px',
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            border: "1px solid var(--border-subtle)",
+            marginBottom: "16px",
           }}
         >
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+              marginBottom: "10px",
+            }}
+          >
             📝 {STRINGS.today.notes}
           </h3>
           <textarea
@@ -641,16 +857,16 @@ export function TodayScreen() {
               saveCurrent({ note: val.trim() });
             }}
             style={{
-              width: '100%',
-              minHeight: '80px',
-              backgroundColor: 'var(--bg-elevated)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '10px',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-              fontFamily: 'inherit',
-              resize: 'vertical',
+              width: "100%",
+              minHeight: "80px",
+              backgroundColor: "var(--bg-elevated)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-sm)",
+              padding: "10px",
+              color: "var(--text-primary)",
+              fontSize: "14px",
+              fontFamily: "inherit",
+              resize: "vertical",
             }}
           />
         </section>

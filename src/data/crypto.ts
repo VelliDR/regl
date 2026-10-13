@@ -12,7 +12,7 @@ export interface WrappedKeyEnvelope {
   readonly verifierCiphertext: string; // Known plaintext encrypted to test password without decrypting all data
 }
 
-const VERIFIER_PLAINTEXT = 'REGL_KEY_VERIFIED_OK';
+const VERIFIER_PLAINTEXT = "REGL_KEY_VERIFIED_OK";
 
 /**
  * Derives Key Encryption Key (KEK) from user passphrase using PBKDF2-SHA256.
@@ -20,28 +20,28 @@ const VERIFIER_PLAINTEXT = 'REGL_KEY_VERIFIED_OK';
 export async function deriveKekFromPassphrase(
   passphrase: string,
   salt: Uint8Array,
-  iterations = 600000
+  iterations = 600000,
 ): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     enc.encode(passphrase),
-    { name: 'PBKDF2' },
+    { name: "PBKDF2" },
     false,
-    ['deriveKey']
+    ["deriveKey"],
   );
 
   return crypto.subtle.deriveKey(
     {
-      name: 'PBKDF2',
+      name: "PBKDF2",
       salt: salt as BufferSource,
       iterations,
-      hash: 'SHA-256',
+      hash: "SHA-256",
     },
     baseKey,
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     false,
-    ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
+    ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
   );
 }
 
@@ -50,9 +50,9 @@ export async function deriveKekFromPassphrase(
  */
 export async function generateDek(): Promise<CryptoKey> {
   return crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 },
+    { name: "AES-GCM", length: 256 },
     true, // Extractable only for wrapping
-    ['encrypt', 'decrypt']
+    ["encrypt", "decrypt"],
   );
 }
 
@@ -61,7 +61,7 @@ export async function generateDek(): Promise<CryptoKey> {
  */
 export async function createKeyEnvelope(
   passphrase: string,
-  dek: CryptoKey
+  dek: CryptoKey,
 ): Promise<{ envelope: WrappedKeyEnvelope; rawDek: CryptoKey }> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iterations = 600000;
@@ -69,19 +69,19 @@ export async function createKeyEnvelope(
 
   // Wrap DEK
   const wrapIv = crypto.getRandomValues(new Uint8Array(12));
-  const rawDekBuffer = await crypto.subtle.exportKey('raw', dek);
+  const rawDekBuffer = await crypto.subtle.exportKey("raw", dek);
   const wrappedBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: wrapIv },
+    { name: "AES-GCM", iv: wrapIv },
     kek,
-    rawDekBuffer
+    rawDekBuffer,
   );
 
   // Verifier
   const verifierIv = crypto.getRandomValues(new Uint8Array(12));
   const verifierBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: verifierIv },
+    { name: "AES-GCM", iv: verifierIv },
     dek,
-    new TextEncoder().encode(VERIFIER_PLAINTEXT)
+    new TextEncoder().encode(VERIFIER_PLAINTEXT),
   );
 
   const envelope: WrappedKeyEnvelope = {
@@ -102,43 +102,50 @@ export async function createKeyEnvelope(
  */
 export async function unwrapDekFromEnvelope(
   passphrase: string,
-  envelope: WrappedKeyEnvelope
+  envelope: WrappedKeyEnvelope,
 ): Promise<CryptoKey> {
   const salt = base64ToBuffer(envelope.salt);
-  const kek = await deriveKekFromPassphrase(passphrase, salt, envelope.iterations);
+  const kek = await deriveKekFromPassphrase(
+    passphrase,
+    salt,
+    envelope.iterations,
+  );
 
   let rawDekBuffer: ArrayBuffer;
   try {
     rawDekBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64ToBuffer(envelope.iv) as BufferSource },
+      { name: "AES-GCM", iv: base64ToBuffer(envelope.iv) as BufferSource },
       kek,
-      base64ToBuffer(envelope.wrappedDek) as BufferSource
+      base64ToBuffer(envelope.wrappedDek) as BufferSource,
     );
   } catch {
-    throw new Error('Geçersiz parola veya bozuk anahtar zarfı.');
+    throw new Error("Geçersiz parola veya bozuk anahtar zarfı.");
   }
 
   const dek = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     rawDekBuffer,
-    { name: 'AES-GCM' },
+    { name: "AES-GCM" },
     false, // Once unwrapped in RAM, non-extractable!
-    ['encrypt', 'decrypt']
+    ["encrypt", "decrypt"],
   );
 
   // Verify against verifier ciphertext
   try {
     const verifiedBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64ToBuffer(envelope.verifierIv) as BufferSource },
+      {
+        name: "AES-GCM",
+        iv: base64ToBuffer(envelope.verifierIv) as BufferSource,
+      },
       dek,
-      base64ToBuffer(envelope.verifierCiphertext) as BufferSource
+      base64ToBuffer(envelope.verifierCiphertext) as BufferSource,
     );
     const verifiedText = new TextDecoder().decode(verifiedBuffer);
     if (verifiedText !== VERIFIER_PLAINTEXT) {
-      throw new Error('Anahtar doğrulama başarısız.');
+      throw new Error("Anahtar doğrulama başarısız.");
     }
   } catch {
-    throw new Error('Geçersiz parola.');
+    throw new Error("Geçersiz parola.");
   }
 
   return dek;
@@ -147,10 +154,17 @@ export async function unwrapDekFromEnvelope(
 /**
  * Encrypts a plaintext string using the DEK with a fresh random 12-byte IV.
  */
-export async function encryptWithDek(plainText: string, dek: CryptoKey): Promise<EncryptedPayload> {
+export async function encryptWithDek(
+  plainText: string,
+  dek: CryptoKey,
+): Promise<EncryptedPayload> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(plainText);
-  const cipherBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, dek, encoded);
+  const cipherBuffer = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    dek,
+    encoded,
+  );
 
   return {
     iv: bufferToBase64(iv),
@@ -161,14 +175,17 @@ export async function encryptWithDek(plainText: string, dek: CryptoKey): Promise
 /**
  * Decrypts an encrypted payload using the DEK.
  */
-export async function decryptWithDek(encrypted: EncryptedPayload, dek: CryptoKey): Promise<string> {
+export async function decryptWithDek(
+  encrypted: EncryptedPayload,
+  dek: CryptoKey,
+): Promise<string> {
   const iv = base64ToBuffer(encrypted.iv);
   const cipherBytes = base64ToBuffer(encrypted.ciphertext);
 
   const decryptedBuffer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+    { name: "AES-GCM", iv: iv as BufferSource },
     dek,
-    cipherBytes as BufferSource
+    cipherBytes as BufferSource,
   );
 
   return new TextDecoder().decode(decryptedBuffer);
@@ -176,7 +193,7 @@ export async function decryptWithDek(encrypted: EncryptedPayload, dek: CryptoKey
 
 // Helpers for Uint8Array <-> Base64 (chunked to prevent call-stack overflow on large arrays)
 export function bufferToBase64(bytes: Uint8Array): string {
-  let binary = '';
+  let binary = "";
   const len = bytes.byteLength;
   const chunkSize = 8192;
   for (let i = 0; i < len; i += chunkSize) {

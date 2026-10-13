@@ -1,13 +1,13 @@
-import { DayEntry, ISODate } from '../core/types';
-import { getDb } from './db';
-import { ValidatedUserSettings } from './schemas';
+import { DayEntry, ISODate } from "../core/types";
+import { getDb } from "./db";
+import { ValidatedUserSettings } from "./schemas";
 
 export const DEFAULT_USER_SETTINGS: ValidatedUserSettings = {
-  trackingMode: 'symptothermal',
+  trackingMode: "symptothermal",
   defaultCycleLength: 28,
-  theme: 'auto',
+  theme: "auto",
   reminderBbtEnabled: true,
-  reminderBbtTime: '07:00',
+  reminderBbtTime: "07:00",
   reminderPeriodDaysBefore: 2,
 };
 
@@ -17,7 +17,7 @@ export class DayRepository {
    */
   async getAllDays(): Promise<DayEntry[]> {
     const db = await getDb();
-    return db.getAll('days');
+    return db.getAll("days");
   }
 
   /**
@@ -25,7 +25,7 @@ export class DayRepository {
    */
   async getDay(date: ISODate): Promise<DayEntry | undefined> {
     const db = await getDb();
-    return db.get('days', date);
+    return db.get("days", date);
   }
 
   /**
@@ -33,7 +33,7 @@ export class DayRepository {
    */
   async saveDay(entry: DayEntry): Promise<void> {
     const db = await getDb();
-    await db.put('days', entry);
+    await db.put("days", entry);
   }
 
   /**
@@ -41,7 +41,7 @@ export class DayRepository {
    */
   async deleteDay(date: ISODate): Promise<void> {
     const db = await getDb();
-    await db.delete('days', date);
+    await db.delete("days", date);
   }
 
   /**
@@ -50,7 +50,7 @@ export class DayRepository {
   async bulkSaveDays(entries: readonly DayEntry[]): Promise<void> {
     if (entries.length === 0) return;
     const db = await getDb();
-    const tx = db.transaction('days', 'readwrite');
+    const tx = db.transaction("days", "readwrite");
     for (const entry of entries) {
       await tx.store.put(entry);
     }
@@ -62,7 +62,7 @@ export class DayRepository {
    */
   async clearAllDays(): Promise<void> {
     const db = await getDb();
-    await db.clear('days');
+    await db.clear("days");
   }
 
   /**
@@ -70,7 +70,7 @@ export class DayRepository {
    */
   async getSettings(): Promise<ValidatedUserSettings> {
     const db = await getDb();
-    const settings = await db.get('settings', 'user-settings');
+    const settings = await db.get("settings", "user-settings");
     return settings ?? DEFAULT_USER_SETTINGS;
   }
 
@@ -79,7 +79,7 @@ export class DayRepository {
    */
   async saveSettings(settings: ValidatedUserSettings): Promise<void> {
     const db = await getDb();
-    await db.put('settings', settings, 'user-settings');
+    await db.put("settings", settings, "user-settings");
   }
 }
 

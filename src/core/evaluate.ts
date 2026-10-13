@@ -1,24 +1,28 @@
-import { daysBetween } from './date';
-import { Cycle, partitionCycles } from './cycles';
-import { EwmaPredictionConfig, PeriodPrediction, predictNextPeriod } from './predict/ewma';
-import { calculateKnausOgino, KnausOginoResult } from './predict/knaus';
+import { daysBetween } from "./date";
+import { Cycle, partitionCycles } from "./cycles";
+import {
+  EwmaPredictionConfig,
+  PeriodPrediction,
+  predictNextPeriod,
+} from "./predict/ewma";
+import { calculateKnausOgino, KnausOginoResult } from "./predict/knaus";
 import {
   evaluateTemperatureShift,
   TemperatureEvaluationResult,
-} from './sensiplan/temperature';
-import { evaluateMucusPeak, MucusEvaluationResult } from './sensiplan/mucus';
+} from "./sensiplan/temperature";
+import { evaluateMucusPeak, MucusEvaluationResult } from "./sensiplan/mucus";
 import {
   DoubleCheckEvaluationResult,
   evaluateDoubleCheck,
-} from './sensiplan/doubleCheck';
+} from "./sensiplan/doubleCheck";
 import {
   evaluatePreOvulatoryPhase,
   HistoricalCycleData,
   PreOvulatoryResult,
-} from './sensiplan/preOvulatory';
-import { DayEntry, ISODate } from './types';
+} from "./sensiplan/preOvulatory";
+import { DayEntry, ISODate } from "./types";
 
-export type ClinicalFertilityState = 'fertile' | 'infertile' | 'unknown';
+export type ClinicalFertilityState = "fertile" | "infertile" | "unknown";
 
 export interface SensiplanFullEvaluation {
   readonly temperature: TemperatureEvaluationResult;
@@ -41,7 +45,7 @@ export interface CycleEvaluation {
 }
 
 export interface EvaluationOptions extends EwmaPredictionConfig {
-  readonly trackingMode?: 'basic' | 'symptothermal';
+  readonly trackingMode?: "basic" | "symptothermal";
   readonly history?: HistoricalCycleData;
 }
 
@@ -51,7 +55,7 @@ export interface EvaluationOptions extends EwmaPredictionConfig {
 export function evaluateCycleState(
   entries: readonly DayEntry[],
   today: ISODate,
-  options: EvaluationOptions = {}
+  options: EvaluationOptions = {},
 ): CycleEvaluation {
   const { completedCycles, activeCycle } = partitionCycles(entries);
 
@@ -68,7 +72,7 @@ export function evaluateCycleState(
 
   let sensiplan: SensiplanFullEvaluation | undefined;
 
-  if (options.trackingMode === 'symptothermal' && activeCycle) {
+  if (options.trackingMode === "symptothermal" && activeCycle) {
     // Filter entries belonging to the active cycle
     const activeCycleEntries = entries.filter((e) => {
       const diff = daysBetween(activeCycle.startDate, e.date);
@@ -89,25 +93,26 @@ export function evaluateCycleState(
     const preOvulatory = evaluatePreOvulatoryPhase(
       currentCycleDay ?? 1,
       targetEntry,
-      history
+      history,
     );
 
     // Determine overall clinical fertility state:
     // 1. Post-ovulatory infertile phase takes precedence
     // 2. Pre-ovulatory infertile phase applies if before window opening
     // 3. Otherwise fertile (safe default [X1])
-    let overallState: ClinicalFertilityState = 'fertile';
-    let activeRuleExplanation = 'Doğurganlık penceresi açık (gebelik ihtimali mevcut).';
+    let overallState: ClinicalFertilityState = "fertile";
+    let activeRuleExplanation =
+      "Doğurganlık penceresi açık (gebelik ihtimali mevcut).";
 
     if (doubleCheck.isPostOvulatoryInfertile) {
-      overallState = 'infertile';
+      overallState = "infertile";
       activeRuleExplanation = doubleCheck.explanation;
     } else if (preOvulatory.isPreOvulatoryInfertile) {
-      overallState = 'infertile';
+      overallState = "infertile";
       activeRuleExplanation = preOvulatory.explanation;
     } else {
-      overallState = 'fertile';
-      if (preOvulatory.appliedRule === 'E4_MUCUS_OVERRIDE') {
+      overallState = "fertile";
+      if (preOvulatory.appliedRule === "E4_MUCUS_OVERRIDE") {
         activeRuleExplanation = preOvulatory.explanation;
       }
     }

@@ -1,19 +1,19 @@
-import { useState } from 'preact/hooks';
+import { useState } from "preact/hooks";
 import {
   entriesMapSignal,
   evaluationSignal,
   selectedDateSignal,
-} from '../../app/state';
+} from "../../app/state";
 import {
   addDays,
   compareISODate,
   getDaysInMonth,
   isoToDayIndex,
   parseISODate,
-} from '../../core/date';
-import { BleedingIntensity, ISODate } from '../../core/types';
+} from "../../core/date";
+import { BleedingIntensity, ISODate } from "../../core/types";
 
-const WEEKDAYS = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'];
+const WEEKDAYS = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
 
 interface CalendarScreenProps {
   readonly onOpenDayEditor: (date: ISODate) => void;
@@ -50,27 +50,35 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const monthStartISO = parseISODate(
-    `${viewYear}-${String(viewMonth).padStart(2, '0')}-01`
+    `${viewYear}-${String(viewMonth).padStart(2, "0")}-01`,
   );
   // Get day of week for the 1st of month (0 = Monday, 6 = Sunday)
   // DayIndex 0 was 1970-01-01 (Thursday). (idx + 3) % 7 gives 0 = Mon, 6 = Sun
   const firstDayIdx = isoToDayIndex(monthStartISO);
-  const startDayOfWeek = ((firstDayIdx + 3) % 7 + 7) % 7;
+  const startDayOfWeek = (((firstDayIdx + 3) % 7) + 7) % 7;
 
   // Build grid calendar days
-  const calendarCells: { date: ISODate; dayNumber: number; isCurrentMonth: boolean }[] = [];
+  const calendarCells: {
+    date: ISODate;
+    dayNumber: number;
+    isCurrentMonth: boolean;
+  }[] = [];
 
   // Previous month trailing days
   for (let i = startDayOfWeek - 1; i >= 0; i--) {
     const trailingDate = addDays(monthStartISO, -i - 1);
     const dayNumber = Number(trailingDate.slice(8, 10));
-    calendarCells.push({ date: trailingDate, dayNumber, isCurrentMonth: false });
+    calendarCells.push({
+      date: trailingDate,
+      dayNumber,
+      isCurrentMonth: false,
+    });
   }
 
   // Current month days
   for (let d = 1; d <= daysInMonth; d++) {
-    const dStr = String(d).padStart(2, '0');
-    const mStr = String(viewMonth).padStart(2, '0');
+    const dStr = String(d).padStart(2, "0");
+    const mStr = String(viewMonth).padStart(2, "0");
     const date = parseISODate(`${viewYear}-${mStr}-${dStr}`);
     calendarCells.push({ date, dayNumber: d, isCurrentMonth: true });
   }
@@ -87,43 +95,56 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
   const pred = evaluation.prediction;
 
   return (
-    <div style={{ padding: '16px', maxWidth: '500px', margin: '0 auto', paddingBottom: '90px' }}>
+    <div
+      style={{
+        padding: "16px",
+        maxWidth: "500px",
+        margin: "0 auto",
+        paddingBottom: "90px",
+      }}
+    >
       {/* Month Navigation */}
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '16px',
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "16px",
         }}
       >
         <button
           type="button"
           onClick={handlePrevMonth}
           style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-primary)',
-            fontSize: '20px',
-            cursor: 'pointer',
-            padding: '8px 16px',
+            background: "none",
+            border: "none",
+            color: "var(--text-primary)",
+            fontSize: "20px",
+            cursor: "pointer",
+            padding: "8px 16px",
           }}
         >
           ‹
         </button>
-        <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>
-          {viewYear} / {String(viewMonth).padStart(2, '0')}
+        <h2
+          style={{
+            fontSize: "18px",
+            fontWeight: "700",
+            color: "var(--text-primary)",
+          }}
+        >
+          {viewYear} / {String(viewMonth).padStart(2, "0")}
         </h2>
         <button
           type="button"
           onClick={handleNextMonth}
           style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-primary)',
-            fontSize: '20px',
-            cursor: 'pointer',
-            padding: '8px 16px',
+            background: "none",
+            border: "none",
+            color: "var(--text-primary)",
+            fontSize: "20px",
+            cursor: "pointer",
+            padding: "8px 16px",
           }}
         >
           ›
@@ -133,17 +154,17 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
       {/* Weekday Headers */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          textAlign: 'center',
-          marginBottom: '8px',
-          fontSize: '12px',
-          fontWeight: '600',
-          color: 'var(--text-muted)',
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          textAlign: "center",
+          marginBottom: "8px",
+          fontSize: "12px",
+          fontWeight: "600",
+          color: "var(--text-muted)",
         }}
       >
         {WEEKDAYS.map((w) => (
-          <div key={w} style={{ padding: '6px 0' }}>
+          <div key={w} style={{ padding: "6px 0" }}>
             {w}
           </div>
         ))}
@@ -152,9 +173,9 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
       {/* Days Grid */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: '4px',
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "4px",
         }}
       >
         {calendarCells.map((cell) => {
@@ -162,7 +183,7 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
           const isSelected = cell.date === selectedDate;
 
           const isBleeding =
-            entry?.bleeding && entry.bleeding !== ('none' as BleedingIntensity);
+            entry?.bleeding && entry.bleeding !== ("none" as BleedingIntensity);
 
           const isPredictedPeriod =
             pred &&
@@ -171,21 +192,23 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
 
           const isOvulationDay = pred?.estimatedOvulationDate === cell.date;
 
-          let cellBg = 'var(--bg-surface)';
-          let cellBorder = '1px solid var(--border-subtle)';
-          let textColor = cell.isCurrentMonth ? 'var(--text-primary)' : 'var(--text-muted)';
+          let cellBg = "var(--bg-surface)";
+          let cellBorder = "1px solid var(--border-subtle)";
+          let textColor = cell.isCurrentMonth
+            ? "var(--text-primary)"
+            : "var(--text-muted)";
 
           if (isBleeding) {
-            cellBg = 'var(--accent-surface)';
-            cellBorder = '1px solid var(--accent-primary)';
-            textColor = 'var(--accent-primary)';
+            cellBg = "var(--accent-surface)";
+            cellBorder = "1px solid var(--accent-primary)";
+            textColor = "var(--accent-primary)";
           } else if (isPredictedPeriod) {
-            cellBg = 'rgba(224, 109, 122, 0.08)';
-            cellBorder = '1px dashed var(--accent-primary)';
+            cellBg = "rgba(224, 109, 122, 0.08)";
+            cellBorder = "1px dashed var(--accent-primary)";
           }
 
           if (isSelected) {
-            cellBorder = '2px solid #ffffff';
+            cellBorder = "2px solid #ffffff";
           }
 
           return (
@@ -197,44 +220,56 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
                 onOpenDayEditor(cell.date);
               }}
               style={{
-                aspectRatio: '1',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
+                aspectRatio: "1",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
                 backgroundColor: cellBg,
                 border: cellBorder,
-                borderRadius: 'var(--radius-sm)',
+                borderRadius: "var(--radius-sm)",
                 color: textColor,
-                cursor: 'pointer',
-                position: 'relative',
-                padding: '2px',
-                transition: 'all 0.15s ease',
+                cursor: "pointer",
+                position: "relative",
+                padding: "2px",
+                transition: "all 0.15s ease",
               }}
             >
-              <span style={{ fontSize: '13px', fontWeight: cell.isCurrentMonth ? '600' : '400' }}>
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: cell.isCurrentMonth ? "600" : "400",
+                }}
+              >
                 {cell.dayNumber}
               </span>
 
               {/* Indicator dots */}
-              <div style={{ display: 'flex', gap: '2px', marginTop: '2px', height: '4px' }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "2px",
+                  marginTop: "2px",
+                  height: "4px",
+                }}
+              >
                 {entry?.bbt && (
                   <span
                     style={{
-                      width: '4px',
-                      height: '4px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--fertile-color)',
+                      width: "4px",
+                      height: "4px",
+                      borderRadius: "50%",
+                      backgroundColor: "var(--fertile-color)",
                     }}
                   />
                 )}
                 {isOvulationDay && (
                   <span
                     style={{
-                      width: '4px',
-                      height: '4px',
-                      borderRadius: '50%',
-                      backgroundColor: '#5ea2ef',
+                      width: "4px",
+                      height: "4px",
+                      borderRadius: "50%",
+                      backgroundColor: "#5ea2ef",
                     }}
                   />
                 )}
@@ -247,46 +282,46 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
       {/* Legend */}
       <div
         style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '12px',
-          marginTop: '20px',
-          fontSize: '12px',
-          color: 'var(--text-secondary)',
-          justifyContent: 'center',
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "12px",
+          marginTop: "20px",
+          fontSize: "12px",
+          color: "var(--text-secondary)",
+          justifyContent: "center",
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <span
             style={{
-              width: '12px',
-              height: '12px',
-              backgroundColor: 'var(--accent-surface)',
-              border: '1px solid var(--accent-primary)',
-              borderRadius: '2px',
+              width: "12px",
+              height: "12px",
+              backgroundColor: "var(--accent-surface)",
+              border: "1px solid var(--accent-primary)",
+              borderRadius: "2px",
             }}
           />
           <span>Adet Kanaması</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <span
             style={{
-              width: '12px',
-              height: '12px',
-              backgroundColor: 'rgba(224, 109, 122, 0.08)',
-              border: '1px dashed var(--accent-primary)',
-              borderRadius: '2px',
+              width: "12px",
+              height: "12px",
+              backgroundColor: "rgba(224, 109, 122, 0.08)",
+              border: "1px dashed var(--accent-primary)",
+              borderRadius: "2px",
             }}
           />
           <span>Tahmin Aralığı</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <span
             style={{
-              width: '6px',
-              height: '6px',
-              backgroundColor: 'var(--fertile-color)',
-              borderRadius: '50%',
+              width: "6px",
+              height: "6px",
+              backgroundColor: "var(--fertile-color)",
+              borderRadius: "50%",
             }}
           />
           <span>BBT Ölçümü</span>

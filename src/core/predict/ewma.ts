@@ -1,6 +1,6 @@
-import { addDays } from '../date';
-import { Cycle } from '../cycles';
-import { ISODate } from '../types';
+import { addDays } from "../date";
+import { Cycle } from "../cycles";
+import { ISODate } from "../types";
 
 export interface EwmaPredictionConfig {
   readonly alpha?: number; // Smoothing factor, default 0.3
@@ -8,7 +8,7 @@ export interface EwmaPredictionConfig {
   readonly personalLutealPhaseLength?: number; // In days, e.g. 14
 }
 
-export type CycleRegularity = 'regular' | 'irregular' | 'unknown';
+export type CycleRegularity = "regular" | "irregular" | "unknown";
 
 export interface PeriodPrediction {
   readonly estimatedCycleLength: number; // e.g. 28.4 days
@@ -22,7 +22,7 @@ export interface PeriodPrediction {
   readonly lowConfidence: boolean; // [P1]
   readonly sampleCount: number; // Non-outlier completed cycles used
   readonly outlierCount: number; // Outlier cycles filtered out [P4]
-  readonly ruleId: 'P1' | 'P2' | 'P3';
+  readonly ruleId: "P1" | "P2" | "P3";
 }
 
 /**
@@ -32,14 +32,16 @@ export interface PeriodPrediction {
 export function predictNextPeriod(
   activeCycleStartDate: ISODate,
   completedCycles: readonly Cycle[],
-  config: EwmaPredictionConfig = {}
+  config: EwmaPredictionConfig = {},
 ): PeriodPrediction {
   const alpha = config.alpha ?? 0.3;
   const fallbackLength = config.fallbackLength ?? 28;
   const personalLp = config.personalLutealPhaseLength;
 
   // Filter out outlier cycles [P4]
-  const validCycles = completedCycles.filter((c) => c.length !== undefined && !c.isOutlier);
+  const validCycles = completedCycles.filter(
+    (c) => c.length !== undefined && !c.isOutlier,
+  );
   const outlierCount = completedCycles.length - validCycles.length;
   const sampleCount = validCycles.length;
 
@@ -56,12 +58,14 @@ export function predictNextPeriod(
       nextPeriodStartDate: nextStart,
       windowStartDate: addDays(nextStart, -uncertainty),
       windowEndDate: addDays(nextStart, uncertainty),
-      ...(personalLp ? { estimatedOvulationDate: addDays(nextStart, -personalLp) } : {}),
-      regularity: 'unknown',
+      ...(personalLp
+        ? { estimatedOvulationDate: addDays(nextStart, -personalLp) }
+        : {}),
+      regularity: "unknown",
       lowConfidence: true,
       sampleCount: 0,
       outlierCount,
-      ruleId: 'P1',
+      ruleId: "P1",
     };
   }
 
@@ -81,12 +85,14 @@ export function predictNextPeriod(
       nextPeriodStartDate: nextStart,
       windowStartDate: addDays(nextStart, -uncertainty),
       windowEndDate: addDays(nextStart, uncertainty),
-      ...(personalLp ? { estimatedOvulationDate: addDays(nextStart, -personalLp) } : {}),
-      regularity: 'unknown',
+      ...(personalLp
+        ? { estimatedOvulationDate: addDays(nextStart, -personalLp) }
+        : {}),
+      regularity: "unknown",
       lowConfidence: false,
       sampleCount,
       outlierCount,
-      ruleId: 'P2',
+      ruleId: "P2",
     };
   }
 
@@ -112,7 +118,7 @@ export function predictNextPeriod(
   const nextStart = addDays(activeCycleStartDate, Math.round(roundedLength));
 
   // [P5] Regularity classification
-  const regularity: CycleRegularity = stdDev < 1.5 ? 'regular' : 'irregular';
+  const regularity: CycleRegularity = stdDev < 1.5 ? "regular" : "irregular";
 
   // [P6] Individual luteal phase prediction if available
   let estimatedOvulationDate: ISODate | undefined;
@@ -132,6 +138,6 @@ export function predictNextPeriod(
     lowConfidence: false,
     sampleCount,
     outlierCount,
-    ruleId: 'P3',
+    ruleId: "P3",
   };
 }

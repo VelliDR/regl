@@ -1,6 +1,6 @@
-import { addDays } from '../date';
-import { Cycle } from '../cycles';
-import { ISODate } from '../types';
+import { addDays } from "../date";
+import { Cycle } from "../cycles";
+import { ISODate } from "../types";
 
 export interface KnausOginoResult {
   readonly eligible: boolean; // Requires at least 6 completed cycles
@@ -22,10 +22,10 @@ export interface KnausOginoResult {
  */
 export function calculateKnausOgino(
   activeCycleStartDate: ISODate,
-  completedCycles: readonly Cycle[]
+  completedCycles: readonly Cycle[],
 ): KnausOginoResult {
   const disclaimer =
-    'Takvim yöntemi (Knaus-Ogino) yüksek başarısızlık oranına sahiptir. Yalnızca bilgilendirme amaçlıdır, gebelik önleme amacıyla kullanılamaz.';
+    "Takvim yöntemi (Knaus-Ogino) yüksek başarısızlık oranına sahiptir. Yalnızca bilgilendirme amaçlıdır, gebelik önleme amacıyla kullanılamaz.";
 
   const validLengths = completedCycles
     .filter((c) => c.length !== undefined && !c.isOutlier)
