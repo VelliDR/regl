@@ -41,6 +41,8 @@ export async function saveSnapshots(
   await db.put("meta", snapshots.slice(0, MAX_SNAPSHOTS), SNAPSHOTS_META_KEY);
 }
 
+let snapshotCounter = 0;
+
 /**
  * Creates an immediate local snapshot of existing records and settings.
  */
@@ -53,7 +55,7 @@ export async function createSnapshotNow(
   const formattedDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
   const snapshot: LocalSnapshot = {
-    id: `snapshot-${now.getTime()}`,
+    id: `snapshot-${now.getTime()}-${++snapshotCounter}`,
     createdAt: now.getTime(),
     formattedDate,
     entryCount: days.length,
