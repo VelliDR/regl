@@ -1,11 +1,25 @@
-import { entriesSignal, evaluationSignal } from "../../app/state";
+import {
+  entriesSignal,
+  evaluationSignal,
+  settingsSignal,
+} from "../../app/state";
 import { calculateMedian } from "../../core/cycles";
+import { BleedingFlowChart } from "../components/charts/BleedingFlowChart";
+import { CycleTrendChart } from "../components/charts/CycleTrendChart";
+import { PhaseDurationChart } from "../components/charts/PhaseDurationChart";
+import { SymptomPhaseChart } from "../components/charts/SymptomPhaseChart";
+import { ThermalShiftChart } from "../components/charts/ThermalShiftChart";
 
 export function InsightsScreen() {
   const evaluation = evaluationSignal.value;
   const entries = entriesSignal.value;
+  const settings = settingsSignal.value;
 
   const completedCycles = evaluation.completedCycles;
+  const allCycles = evaluation.activeCycle
+    ? [...completedCycles, evaluation.activeCycle]
+    : completedCycles;
+
   const validLengths = completedCycles
     .filter((c) => c.length !== undefined && !c.isOutlier)
     .map((c) => c.length!);
@@ -42,13 +56,15 @@ export function InsightsScreen() {
 
   const topSymptoms = [...symptomCounts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+    .slice(0, 8);
+
+  const isSympto = settings.trackingMode === "symptothermal";
 
   return (
     <div
       style={{
         padding: "16px",
-        maxWidth: "500px",
+        maxWidth: "520px",
         margin: "0 auto",
         paddingBottom: "90px",
       }}
@@ -64,7 +80,7 @@ export function InsightsScreen() {
         📊 İçgörüler ve İstatistikler
       </h2>
 
-      {/* Overview Metric Cards */}
+      {/* 1. Overview Metric Cards */}
       <div
         style={{
           display: "grid",
@@ -128,7 +144,7 @@ export function InsightsScreen() {
         </div>
       </div>
 
-      {/* Cycle Regularity Card */}
+      {/* 2. Cycle Regularity Card */}
       <section
         style={{
           backgroundColor: "var(--bg-surface)",
@@ -194,8 +210,76 @@ export function InsightsScreen() {
         </p>
       </section>
 
-      {/* Cycle History Bar Chart */}
-      {completedCycles.length > 0 && (
+      {/* 3. Cycle Trend Line & Variance Corridor Chart */}
+      <section
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          borderRadius: "var(--radius-md)",
+          padding: "16px",
+          border: "1px solid var(--border-subtle)",
+          marginBottom: "16px",
+        }}
+      >
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: "700",
+            color: "var(--text-primary)",
+            marginBottom: "4px",
+          }}
+        >
+          📈 Döngü Süreleri Trend Çizgisi
+        </h3>
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
+          }}
+        >
+          Geçmiş döngü uzunluklarının medyan referansı ve 24–35 günlük normal
+          klinik aralık koridoru.
+        </p>
+        <CycleTrendChart
+          cycles={completedCycles}
+          medianLength={medianLength > 0 ? medianLength : 28}
+        />
+      </section>
+
+      {/* 4. Bleeding Flow Distribution Chart */}
+      <section
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          borderRadius: "var(--radius-md)",
+          padding: "16px",
+          border: "1px solid var(--border-subtle)",
+          marginBottom: "16px",
+        }}
+      >
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: "700",
+            color: "var(--text-primary)",
+            marginBottom: "4px",
+          }}
+        >
+          🩸 Kanama Akış Profili (Döngü Günleri 1–7)
+        </h3>
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
+          }}
+        >
+          Adet kanamasının döngü başlangıcından itibaren yoğunluk dağılımı.
+        </p>
+        <BleedingFlowChart cycles={allCycles} entries={entries} />
+      </section>
+
+      {/* 5. Follicular vs. Luteal Phase Duration Chart (Only in symptothermal mode or when data exists) */}
+      {isSympto && (
         <section
           style={{
             backgroundColor: "var(--bg-surface)",
@@ -210,72 +294,94 @@ export function InsightsScreen() {
               fontSize: "14px",
               fontWeight: "700",
               color: "var(--text-primary)",
-              marginBottom: "16px",
+              marginBottom: "4px",
             }}
           >
-            Geçmiş Döngü Uzunlukları
+            🌿 Faz Dağılımı (Foliküler vs. Luteal Faz)
           </h3>
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+          <p
+            style={{
+              fontSize: "12px",
+              color: "var(--text-muted)",
+              marginBottom: "14px",
+            }}
           >
-            {completedCycles.slice(-8).map((c) => {
-              const len = c.length ?? 28;
-              const maxScale = 40;
-              const widthPct = Math.min(
-                100,
-                Math.max(10, (len / maxScale) * 100),
-              );
-
-              return (
-                <div key={c.id}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: "12px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <span style={{ color: "var(--text-secondary)" }}>
-                      {c.id}. Döngü ({c.startDate})
-                    </span>
-                    <strong
-                      style={{
-                        color: c.isOutlier
-                          ? "var(--accent-primary)"
-                          : "var(--text-primary)",
-                      }}
-                    >
-                      {len} gün {c.isOutlier ? "(Aykırı)" : ""}
-                    </strong>
-                  </div>
-                  <div
-                    style={{
-                      height: "8px",
-                      backgroundColor: "var(--bg-elevated)",
-                      borderRadius: "var(--radius-full)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${widthPct}%`,
-                        backgroundColor: c.isOutlier
-                          ? "var(--accent-primary)"
-                          : "#5ea2ef",
-                        borderRadius: "var(--radius-full)",
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+            Yumurtlama öncesi (foliküler) ve sonrası (luteal) süreler. Sağlıklı
+            bir luteal faz 10–16 gün sürer.
+          </p>
+          <PhaseDurationChart cycles={completedCycles} entries={entries} />
         </section>
       )}
 
-      {/* Top Symptoms */}
+      {/* 6. Thermal Shift Chart (BBT Shift Comparison) */}
+      {isSympto && (
+        <section
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            border: "1px solid var(--border-subtle)",
+            marginBottom: "16px",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+              marginBottom: "4px",
+            }}
+          >
+            🌡️ Termal Değişim Analizi (Ateş Sıçraması ΔT)
+          </h3>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "var(--text-muted)",
+              marginBottom: "14px",
+            }}
+          >
+            Foliküler düşük düzey ile luteal yüksek düzey bazal vücut ısısı
+            ortalamalarının karşılaştırması.
+          </p>
+          <ThermalShiftChart cycles={allCycles} entries={entries} />
+        </section>
+      )}
+
+      {/* 7. Symptom Phase Distribution Chart */}
+      <section
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          borderRadius: "var(--radius-md)",
+          padding: "16px",
+          border: "1px solid var(--border-subtle)",
+          marginBottom: "16px",
+        }}
+      >
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: "700",
+            color: "var(--text-primary)",
+            marginBottom: "4px",
+          }}
+        >
+          📋 Belirtilerin Döngü Evrelerine Dağılımı
+        </h3>
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginBottom: "14px",
+          }}
+        >
+          Hangi belirtinin döngünün hangi evresinde (Adet, Foliküler, PMS)
+          yoğunlaştığının analizi.
+        </p>
+        <SymptomPhaseChart cycles={allCycles} entries={entries} />
+      </section>
+
+      {/* 8. Top Symptoms Chips */}
       {topSymptoms.length > 0 && (
         <section
           style={{
