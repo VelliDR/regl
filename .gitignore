@@ -35,3 +35,6 @@ test-results/
 
 # Scratch and agent temp files
 .gemini/
+
+# Binary documents
+*.docx
