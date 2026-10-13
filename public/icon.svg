@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e06d7a" />
+      <stop offset="50%" stop-color="#b84d62" />
+      <stop offset="100%" stop-color="#7a2a43" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="#18171a"/>
+  <!-- Elegant minimal cycle droplet / moon arc -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#2c2a30" stroke-width="24"/>
+  <path d="M 256 96 A 160 160 0 0 1 416 256" fill="none" stroke="url(#grad)" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="48" fill="url(#grad)"/>
+</svg>
