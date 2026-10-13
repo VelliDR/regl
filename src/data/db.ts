@@ -13,11 +13,7 @@ export interface ReglDBSchema extends DBSchema {
   };
   meta: {
     key: string;
-    value: {
-      schemaVersion: number;
-      createdAt: number;
-      lastOpenedAt?: number;
-    };
+    value: unknown;
   };
 }
 

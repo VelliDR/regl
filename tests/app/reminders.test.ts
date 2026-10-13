@@ -64,5 +64,21 @@ describe("Hatırlatıcılar ve Takvim Entegrasyonu (reminders.ts)", () => {
       const notices = evaluateInAppNotices(true, 10, oldDate);
       expect(notices.some((n) => n.id === "backup-due")).toBe(true);
     });
+
+    it("Regl beklenen tarihten 2 gün veya daha fazla gecikmişse gecikme uyarısı üretmelidir", () => {
+      const noticesDelayed = evaluateInAppNotices(true, -3, "2026-10-10");
+      const delayNotice = noticesDelayed.find((n) => n.id === "cycle-delayed");
+      expect(delayNotice).toBeDefined();
+      expect(delayNotice?.title).toContain("Döngü Gecikmesi");
+      expect(delayNotice?.message).toContain("3 gün geçti");
+    });
+
+    it("Kayıt sayısı 3'ten az olan yeni kullanıcılarda ilk yedek uyarısı gösterilmemelidir", () => {
+      const noticesFresh = evaluateInAppNotices(true, 10, undefined, 1);
+      expect(noticesFresh.some((n) => n.id === "backup-due")).toBe(false);
+
+      const noticesEstablished = evaluateInAppNotices(true, 10, undefined, 5);
+      expect(noticesEstablished.some((n) => n.id === "backup-due")).toBe(true);
+    });
   });
 });

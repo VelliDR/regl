@@ -376,6 +376,7 @@ export function TodayScreen() {
               currentEntry.bbt !== undefined),
           daysUntilNextPeriod,
           settings.lastBackupDate,
+          entriesMap.size,
         ).map((notice) => (
           <div
             key={notice.id}

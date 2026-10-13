@@ -4,6 +4,7 @@ import { DayEntry, ISODate } from "../core/types";
 import { dayRepository, DEFAULT_USER_SETTINGS } from "../data/repo";
 import { ValidatedUserSettings } from "../data/schemas";
 import { compareISODate, parseISODate } from "../core/date";
+import { maybeCreateWeeklySnapshot } from "../data/snapshots";
 
 /**
  * Gets today's date formatted as ISODate using local time.
@@ -55,8 +56,19 @@ export const entriesMapSignal = computed<Map<ISODate, DayEntry>>(() => {
 });
 
 /**
- * Loads all days and settings from IndexedDB into memory signals.
+ * Reloads all days and settings from IndexedDB into memory signals.
  */
+export async function reloadAppState(): Promise<void> {
+  const [days, settings] = await Promise.all([
+    dayRepository.getAllDays(),
+    dayRepository.getSettings(),
+  ]);
+
+  days.sort((a, b) => compareISODate(a.date, b.date));
+  entriesSignal.value = days;
+  settingsSignal.value = settings;
+}
+
 export async function initializeAppState(): Promise<void> {
   if (isInitializedSignal.value) return;
 
@@ -71,6 +83,8 @@ export async function initializeAppState(): Promise<void> {
     settingsSignal.value = settings;
     isInitializedSignal.value = true;
     dbErrorSignal.value = null;
+
+    maybeCreateWeeklySnapshot(days, settings).catch(() => {});
   } catch (err) {
     dbErrorSignal.value = `Veritabanı başlatılamadı: ${(err as Error).message}`;
     isInitializedSignal.value = true;

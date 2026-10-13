@@ -103,9 +103,15 @@ export function createAndroidCalendarIntentUrl(
 /**
  * Evaluates pending in-app reminder notices for TodayScreen.
  */
+export type InAppNoticeType =
+  | "missing-today"
+  | "period-approaching"
+  | "cycle-delayed"
+  | "backup-due";
+
 export interface InAppNotice {
   readonly id: string;
-  readonly type: "missing-today" | "period-approaching" | "backup-due";
+  readonly type: InAppNoticeType;
   readonly title: string;
   readonly message: string;
 }
@@ -114,6 +120,7 @@ export function evaluateInAppNotices(
   hasTodayEntry: boolean,
   daysUntilPeriod?: number,
   lastBackupDate?: string,
+  entryCount?: number,
 ): InAppNotice[] {
   const notices: InAppNotice[] = [];
 
@@ -144,27 +151,41 @@ export function evaluateInAppNotices(
     });
   }
 
-  // 3. Backup due notice (if > 14 days or never)
-  if (!lastBackupDate) {
+  // 3. Cycle delayed notice (if 2+ days past expected date)
+  if (daysUntilPeriod !== undefined && daysUntilPeriod <= -2) {
+    const daysDelayed = Math.abs(daysUntilPeriod);
     notices.push({
-      id: "backup-due",
-      type: "backup-due",
-      title: "Verilerinizi Güvene Alın",
-      message:
-        "İlk yedeğinizi almak için Ayarlar bölümünden JSON yedeği indirebilirsiniz.",
+      id: "cycle-delayed",
+      type: "cycle-delayed",
+      title: "Döngü Gecikmesi",
+      message: `Beklenen adet kanaması tarihinin üzerinden ${daysDelayed} gün geçti. Stres, seyahat, uyku düzensizlikleri veya geç yumurtlama gecikmeye neden olabilir.`,
     });
-  } else {
-    const lastBackupTime = new Date(lastBackupDate).getTime();
-    const daysSince = Math.floor(
-      (Date.now() - lastBackupTime) / (1000 * 60 * 60 * 24),
-    );
-    if (daysSince >= 14) {
+  }
+
+  // 4. Backup due notice (if > 14 days or never)
+  const isEligibleForBackupNotice = entryCount === undefined || entryCount >= 3;
+  if (isEligibleForBackupNotice) {
+    if (!lastBackupDate) {
       notices.push({
         id: "backup-due",
         type: "backup-due",
-        title: "Yedekleme Hatırlatıcısı",
-        message: `Son yedeklemenin üzerinden ${daysSince} gün geçti. Veri kaybını önlemek için lütfen yeni bir yedek alın.`,
+        title: "Verilerinizi Güvene Alın",
+        message:
+          "İlk yedeğinizi almak için Ayarlar bölümünden JSON yedeği indirebilirsiniz.",
       });
+    } else {
+      const lastBackupTime = new Date(lastBackupDate).getTime();
+      const daysSince = Math.floor(
+        (Date.now() - lastBackupTime) / (1000 * 60 * 60 * 24),
+      );
+      if (daysSince >= 14) {
+        notices.push({
+          id: "backup-due",
+          type: "backup-due",
+          title: "Yedekleme Hatırlatıcısı",
+          message: `Son yedeklemenin üzerinden ${daysSince} gün geçti. Veri kaybını önlemek için lütfen yeni bir yedek alın.`,
+        });
+      }
     }
   }
 

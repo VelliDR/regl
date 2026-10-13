@@ -419,6 +419,16 @@ export function ChartScreen() {
                       strokeWidth="1.5"
                       strokeDasharray={p.excluded ? "2 2" : undefined}
                     />
+                    {p.excluded && (
+                      <line
+                        x1={p.x - 3}
+                        y1={p.y - 3}
+                        x2={p.x + 3}
+                        y2={p.y + 3}
+                        stroke="var(--accent-primary)"
+                        strokeWidth="1.5"
+                      />
+                    )}
                     {/* 1HM, 2HM, 3HM Labels */}
                     {highIndex && (
                       <text

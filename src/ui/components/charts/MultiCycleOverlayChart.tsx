@@ -68,17 +68,27 @@ export function MultiCycleOverlayChart({
   const series = recentCycles.map((cycle, cIdx) => {
     const cycleLen = Math.min(maxDays, cycle.length ?? 30);
     const pts: { day: number; temp: number; x: number; y: number }[] = [];
+    const excPts: { day: number; temp: number; x: number; y: number }[] = [];
 
     for (let d = 1; d <= cycleLen; d++) {
       const curDate = addDays(cycle.startDate, d - 1);
       const entry = entriesMap.get(curDate);
-      if (entry?.bbt?.value && !entry.bbt.excluded) {
-        pts.push({
-          day: d,
-          temp: entry.bbt.value,
-          x: getX(d),
-          y: getY(entry.bbt.value),
-        });
+      if (entry?.bbt?.value) {
+        if (!entry.bbt.excluded) {
+          pts.push({
+            day: d,
+            temp: entry.bbt.value,
+            x: getX(d),
+            y: getY(entry.bbt.value),
+          });
+        } else {
+          excPts.push({
+            day: d,
+            temp: entry.bbt.value,
+            x: getX(d),
+            y: getY(entry.bbt.value),
+          });
+        }
       }
     }
 
@@ -90,6 +100,7 @@ export function MultiCycleOverlayChart({
       cycle,
       color: CYCLE_COLORS[cIdx % CYCLE_COLORS.length]!,
       points: pts,
+      excludedPoints: excPts,
       pathD,
     };
   });
@@ -198,6 +209,27 @@ export function MultiCycleOverlayChart({
               )}
               {s.points.map((p) => (
                 <circle key={p.day} cx={p.x} cy={p.y} r="3" fill={s.color} />
+              ))}
+              {s.excludedPoints.map((p) => (
+                <g key={`exc-${p.day}`}>
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r="2.5"
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth="1"
+                    strokeDasharray="2 1"
+                  />
+                  <line
+                    x1={p.x - 2}
+                    y1={p.y - 2}
+                    x2={p.x + 2}
+                    y2={p.y + 2}
+                    stroke={s.color}
+                    strokeWidth="1"
+                  />
+                </g>
               ))}
             </g>
           ))}

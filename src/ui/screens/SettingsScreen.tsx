@@ -3,6 +3,7 @@ import {
   entriesSignal,
   isLockedSignal,
   persistSettings,
+  reloadAppState,
   settingsSignal,
 } from "../../app/state";
 import {
@@ -11,6 +12,13 @@ import {
   importBackup,
   validateBackupString,
 } from "../../data/backup";
+import {
+  createSnapshotNow,
+  deleteSnapshot,
+  loadSnapshots,
+  LocalSnapshot,
+  restoreSnapshot,
+} from "../../data/snapshots";
 import {
   createKeyEnvelope,
   generateDek,
@@ -31,6 +39,7 @@ export function SettingsScreen() {
     null,
   );
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<LocalSnapshot[]>([]);
 
   // App Lock State
   const [lockPassphrase, setLockPassphrase] = useState<string>("");
@@ -46,10 +55,14 @@ export function SettingsScreen() {
     checkAndRequestStoragePersistence().then((status) => {
       setStorageStatus(status);
     });
+    loadSnapshots().then(setSnapshots);
   }, []);
 
   const handleExportJson = async () => {
     try {
+      const nowIso = new Date().toISOString();
+      await persistSettings({ ...settings, lastBackupDate: nowIso });
+
       const jsonStr = exportToJson(entries, settings);
       const fileName = `regl-yedek-${new Date().toISOString().slice(0, 10)}.json`;
       const file = new File([jsonStr], fileName, { type: "application/json" });
@@ -82,8 +95,11 @@ export function SettingsScreen() {
     }
   };
 
-  const handleExportCsv = () => {
+  const handleExportCsv = async () => {
     try {
+      const nowIso = new Date().toISOString();
+      await persistSettings({ ...settings, lastBackupDate: nowIso });
+
       const csvStr = exportToCsv(entries);
       const fileName = `regl-rapor-${new Date().toISOString().slice(0, 10)}.csv`;
       const blob = new Blob([csvStr], { type: "text/csv;charset=utf-8" });
@@ -99,6 +115,47 @@ export function SettingsScreen() {
     }
   };
 
+  const handleCreateSnapshot = async () => {
+    try {
+      const snap = await createSnapshotNow(entries, settings);
+      setSnapshots((prev) => [snap, ...prev.filter((s) => s.id !== snap.id)]);
+      setBackupMessage("Yeni güvenlik snapshot'ı oluşturuldu 📸");
+    } catch (err) {
+      setBackupMessage(`Snapshot hatası: ${(err as Error).message}`);
+    }
+  };
+
+  const handleRestoreSnapshot = async (id: string) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Bu yerel yedeği geri yüklemek istiyor musunuz? Mevcut verileriniz bu yedeğe göre güncellenecektir.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const summary = await restoreSnapshot(id, "replace");
+      await reloadAppState();
+      setBackupMessage(
+        `Snapshot başarıyla geri yüklendi: ${summary.importedCount} gün yüklendi ✅`,
+      );
+    } catch (err) {
+      setBackupMessage(`Geri yükleme hatası: ${(err as Error).message}`);
+    }
+  };
+
+  const handleDeleteSnapshot = async (id: string) => {
+    try {
+      await deleteSnapshot(id);
+      setSnapshots((prev) => prev.filter((s) => s.id !== id));
+      setBackupMessage("Snapshot silindi 🗑️");
+    } catch (err) {
+      setBackupMessage(`Silme hatası: ${(err as Error).message}`);
+    }
+  };
+
   const handleFileImport = async (e: Event) => {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -111,8 +168,7 @@ export function SettingsScreen() {
       setBackupMessage(
         `Yedek içe aktarıldı: ${summary.importedCount} gün güncellendi ✅`,
       );
-      // Reload page to refresh all active signals
-      window.location.reload();
+      await reloadAppState();
     } catch (err) {
       setBackupMessage(`İçe aktarma hatası: ${(err as Error).message}`);
     }
@@ -705,6 +761,139 @@ export function SettingsScreen() {
               style={{ display: "none" }}
             />
           </label>
+        </div>
+
+        {/* Yerel Rolling Snapshots */}
+        <div
+          style={{
+            marginTop: "16px",
+            paddingTop: "14px",
+            borderTop: "1px solid var(--border-subtle)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "10px",
+            }}
+          >
+            <div>
+              <h4
+                style={{
+                  fontSize: "13px",
+                  fontWeight: "700",
+                  color: "var(--text-primary)",
+                }}
+              >
+                📸 Yerel Güvenlik Yedekleri (Snapshots)
+              </h4>
+              <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                Haftalık otomatik alınan son 4 yerel kurtarma noktası.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateSnapshot}
+              style={{
+                padding: "6px 10px",
+                backgroundColor: "var(--accent-surface)",
+                color: "var(--accent-primary)",
+                border: "1px solid var(--accent-primary)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "11px",
+                fontWeight: "700",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + Yedek Al
+            </button>
+          </div>
+
+          {snapshots.length === 0 ? (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--text-muted)",
+                fontStyle: "italic",
+              }}
+            >
+              Henüz kaydedilmiş yerel snapshot bulunmuyor.
+            </p>
+          ) : (
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+            >
+              {snapshots.map((s) => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    backgroundColor: "var(--bg-elevated)",
+                    padding: "8px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "12px",
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        fontWeight: "600",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {s.formattedDate}
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: "8px",
+                        color: "var(--text-muted)",
+                        fontSize: "11px",
+                      }}
+                    >
+                      ({s.entryCount} gün)
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreSnapshot(s.id)}
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: "transparent",
+                        border: "1px solid var(--border-strong)",
+                        borderRadius: "var(--radius-sm)",
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                        fontSize: "11px",
+                      }}
+                    >
+                      Geri Yükle ↺
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSnapshot(s.id)}
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: "transparent",
+                        border: "none",
+                        color: "var(--accent-primary)",
+                        cursor: "pointer",
+                        fontSize: "12px",
+                      }}
+                      title="Sil"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {backupMessage && (
