@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { settingsSignal } from "../../app/state";
 import { unwrapDekFromEnvelope, WrappedKeyEnvelope } from "../../data/crypto";
 
@@ -11,10 +11,20 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   const [passphrase, setPassphrase] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [failedAttempts, setFailedAttempts] = useState<number>(0);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+    const timer = window.setInterval(() => {
+      setCooldownRemaining((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownRemaining]);
 
   const handleUnlock = async (e: Event) => {
     e.preventDefault();
-    if (!passphrase.trim()) return;
+    if (!passphrase.trim() || cooldownRemaining > 0) return;
 
     setIsVerifying(true);
     setErrorMsg(null);
@@ -30,9 +40,25 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
         settings.lockEnvelopeJson,
       );
       await unwrapDekFromEnvelope(passphrase.trim(), envelope);
+      setFailedAttempts(0);
       onUnlock();
     } catch {
-      setErrorMsg("Geçersiz parola veya PIN. Lütfen tekrar deneyin.");
+      const nextFailed = failedAttempts + 1;
+      setFailedAttempts(nextFailed);
+
+      if (nextFailed >= 5) {
+        setCooldownRemaining(30);
+        setErrorMsg(
+          "Çok sayıda hatalı deneme! Güvenliğiniz için 30 saniye kilitlendi.",
+        );
+      } else if (nextFailed >= 3) {
+        setCooldownRemaining(5);
+        setErrorMsg(
+          "Hatalı deneme. Güvenlik nedeniyle 5 saniye beklemeniz gerekiyor.",
+        );
+      } else {
+        setErrorMsg("Geçersiz parola veya PIN. Lütfen tekrar deneyin.");
+      }
     } finally {
       setIsVerifying(false);
     }
@@ -81,6 +107,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
             placeholder="Parola veya PIN"
             value={passphrase}
             autoFocus
+            disabled={cooldownRemaining > 0}
             onChange={(e) =>
               setPassphrase((e.target as HTMLInputElement).value)
             }
@@ -92,6 +119,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
               color: "var(--text-primary)",
               fontSize: "16px",
               textAlign: "center",
+              opacity: cooldownRemaining > 0 ? 0.5 : 1,
             }}
           />
 
@@ -109,21 +137,36 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
 
           <button
             type="submit"
-            disabled={isVerifying}
+            disabled={isVerifying || cooldownRemaining > 0}
             style={{
               padding: "12px",
               minHeight: "var(--touch-target-min)",
-              backgroundColor: "var(--accent-primary)",
-              color: "#ffffff",
+              backgroundColor:
+                cooldownRemaining > 0
+                  ? "var(--bg-elevated)"
+                  : "var(--accent-primary)",
+              color:
+                cooldownRemaining > 0
+                  ? "var(--text-muted)"
+                  : "#ffffff",
               border: "none",
               borderRadius: "var(--radius-full)",
               fontSize: "15px",
               fontWeight: "700",
-              cursor: isVerifying ? "wait" : "pointer",
+              cursor:
+                cooldownRemaining > 0
+                  ? "not-allowed"
+                  : isVerifying
+                    ? "wait"
+                    : "pointer",
               opacity: isVerifying ? 0.7 : 1,
             }}
           >
-            {isVerifying ? "Doğrulanıyor..." : "Kilidi Aç 🔓"}
+            {cooldownRemaining > 0
+              ? `Lütfen bekleyin (${cooldownRemaining}s)`
+              : isVerifying
+                ? "Doğrulanıyor..."
+                : "Kilidi Aç 🔓"}
           </button>
         </form>
 
