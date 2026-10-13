@@ -18,9 +18,9 @@ export type DisturbanceType =
 
 export interface BbtRecord {
   readonly value: CentiCelsius;
-  readonly time?: string; // 'HH:MM'
-  readonly disturbances?: readonly DisturbanceType[];
-  readonly excluded?: boolean;
+  readonly time?: string | undefined; // 'HH:MM'
+  readonly disturbances?: readonly DisturbanceType[] | undefined;
+  readonly excluded?: boolean | undefined;
 }
 
 export interface MucusRecord {
@@ -29,21 +29,21 @@ export interface MucusRecord {
 }
 
 export interface CervixRecord {
-  readonly position?: 'low' | 'high';
-  readonly firmness?: 'firm' | 'soft';
-  readonly opening?: 'closed' | 'open';
+  readonly position?: 'low' | 'high' | undefined;
+  readonly firmness?: 'firm' | 'soft' | undefined;
+  readonly opening?: 'closed' | 'open' | undefined;
 }
 
 export interface DayEntry {
   readonly date: ISODate;
-  readonly bleeding?: BleedingIntensity;
-  readonly cycleStartOverride?: boolean;
-  readonly bbt?: BbtRecord;
-  readonly mucus?: MucusRecord;
-  readonly cervix?: CervixRecord;
-  readonly symptoms?: readonly string[];
-  readonly mood?: readonly string[];
-  readonly sex?: 'none' | 'protected' | 'unprotected';
-  readonly note?: string;
+  readonly bleeding?: BleedingIntensity | undefined;
+  readonly cycleStartOverride?: boolean | undefined;
+  readonly bbt?: BbtRecord | undefined;
+  readonly mucus?: MucusRecord | undefined;
+  readonly cervix?: CervixRecord | undefined;
+  readonly symptoms?: readonly string[] | undefined;
+  readonly mood?: readonly string[] | undefined;
+  readonly sex?: 'none' | 'protected' | 'unprotected' | undefined;
+  readonly note?: string | undefined;
   readonly updatedAt: number;
 }
