@@ -36,5 +36,8 @@ test-results/
 # Scratch and agent temp files
 .gemini/
 
-# Binary documents
+# Binary documents and external backups
 *.docx
+*.pc
+*-yedek*.json
+*-backup*.json

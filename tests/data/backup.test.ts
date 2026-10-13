@@ -113,4 +113,21 @@ describe("Yedekleme ve Geri Yükleme Motoru (backup.ts)", () => {
     const day1 = await dayRepository.getDay(parseISODate("2026-05-01"));
     expect(day1?.bleeding).toBe("spotting"); // Eski veri ezilmedi!
   });
+
+  it("Period Calendar (.pc) dönüştürülmüş yedek dosyası Valibot tarafından doğrulanmalı ve içe aktarılmalıdır", async () => {
+    const fs = await import("fs");
+    if (fs.existsSync("regl-yedek-period-calendar.json")) {
+      const content = fs.readFileSync("regl-yedek-period-calendar.json", "utf-8");
+      const validated = validateBackupString(content);
+
+      expect(validated.format).toBe("regl-backup-v1");
+      expect(validated.days.length).toBeGreaterThanOrEqual(150);
+
+      const summary = await importBackup(validated, "replace");
+      expect(summary.importedCount).toBe(validated.days.length);
+
+      const allDays = await dayRepository.getAllDays();
+      expect(allDays.length).toBe(validated.days.length);
+    }
+  });
 });
