@@ -15,7 +15,7 @@ Alternatifler değerlendirilmiştir:
 Uygulama **Saf PWA** olarak geliştirilecektir:
 - Depolama katmanı: IndexedDB (`idb` kütüphanesi).
 - Kalıcılık: Uygulama açılışında `navigator.storage.persist()` çağrılarak işletim sisteminin veri tahliyesi (eviction) engellenecektir.
-- Çevrimdışı çalışma: `vite-plugin-pwa` (Workbox) ile `registerType: 'prompt'` modunda Service Worker kurulacaktır.
+- Çevrimdışı çalışma: `vite-plugin-pwa` (Workbox) ile `registerType: 'autoUpdate'` modunda Service Worker kurulacaktır (yeni sürümler yayınlandığında arka planda sessizce indirilir ve otomatik aktif edilir).
 - Hatırlatıcılar: PWA arka planda kapalıyken sunucusuz zamanlanmış yerel bildirim tetikleyemediğinden; Samsung Calendar ve Google Calendar uyumlu `.ics` / Android Intent dışa aktarımı ile cihaz takvimine alarm içeren etkinlikler yazılacaktır.
 
 ## Sonuçlar (Consequences)
