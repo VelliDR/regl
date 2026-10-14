@@ -62,4 +62,81 @@ describe("UI Bileşen ve Ekran Testleri", () => {
     expect(container.textContent).toContain("Sıfır Sunucu");
     expect(container.textContent).toContain("Başlayalım");
   });
+
+  it("TodayScreen kısa bilgi kartlarını çizmeli ve karta tıklandığında alt çekmece açılmalıdır", async () => {
+    const { TodayScreen } = await import("../../src/ui/screens/TodayScreen");
+    render(<TodayScreen />, container);
+
+    // Kısa bilgi kartlarının varlığını doğrula
+    expect(container.textContent).toContain("Kanama");
+    expect(container.textContent).toContain("Bazal Vücut Isısı");
+    expect(container.textContent).toContain("Servikal Mukus");
+    expect(container.textContent).toContain("Belirtiler");
+
+    // Kart butonunu bul ve tıkla
+    const cards = container.querySelectorAll(".glance-card");
+    expect(cards.length).toBeGreaterThanOrEqual(4);
+
+    const bleedingCard = cards[0] as HTMLButtonElement;
+    bleedingCard.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Alt çekmecenin (Bottom Sheet) açıldığını doğrula
+    const sheetContainer = container.querySelector(".sheet-container");
+    expect(sheetContainer).not.toBeNull();
+    expect(sheetContainer?.textContent).toContain("Tamam ✓");
+    expect(sheetContainer?.textContent).toContain("Kaydet ve Kapat ✓");
+
+    // Kaydet ve Kapat butonuna tıklandığında çekmecenin kapandığını doğrula
+    const closeButtons = sheetContainer?.querySelectorAll("button");
+    const bottomCloseButton = Array.from(closeButtons ?? []).find((b) =>
+      b.textContent?.includes("Kaydet ve Kapat"),
+    );
+    expect(bottomCloseButton).toBeDefined();
+    bottomCloseButton?.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(container.querySelector(".sheet-container")).toBeNull();
+  });
+
+  it("TodayScreen döngü fazı butonlarını (Menstrüasyon, Foliküler, Ovülasyon, Luteal) ve faz kartını göstermelidir", async () => {
+    const { TodayScreen } = await import("../../src/ui/screens/TodayScreen");
+    render(<TodayScreen />, container);
+
+    // 4-faz butonlarının varlığını kontrol et
+    const phasePills = container.querySelectorAll(".phase-pill");
+    expect(phasePills.length).toBe(4);
+
+    expect(container.textContent).toContain("Menstrüasyon");
+    expect(container.textContent).toContain("Foliküler");
+    expect(container.textContent).toContain("Ovülasyon");
+    expect(container.textContent).toContain("Luteal");
+
+    // Faz detay kartının varlığı
+    const spotlightCard = container.querySelector(".phase-spotlight-card");
+    expect(spotlightCard).not.toBeNull();
+    expect(spotlightCard?.textContent).toContain("Rehber ℹ️");
+
+    // Luteal faz hapına tıkla ve rehber çekmecesinin açıldığını doğrula
+    const lutealPill = phasePills[3] as HTMLButtonElement;
+    lutealPill.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const sheetContainer = container.querySelector(".sheet-container");
+    expect(sheetContainer).not.toBeNull();
+    expect(sheetContainer?.textContent).toContain("Döngü Fazları Rehberi");
+    expect(sheetContainer?.textContent).toContain("Luteal Faz");
+    expect(sheetContainer?.textContent).toContain("Hormonal Durum ve Biyoloji");
+    expect(sheetContainer?.textContent).toContain("Anladım ✓");
+
+    // Anladım butonuna tıkla ve kapandığını doğrula
+    const anladimButton = Array.from(
+      sheetContainer?.querySelectorAll("button") ?? [],
+    ).find((b) => b.textContent?.includes("Anladım"));
+    anladimButton?.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(container.querySelector(".sheet-container")).toBeNull();
+  });
 });
+

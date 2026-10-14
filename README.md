@@ -44,6 +44,7 @@ Uygulama internete veya herhangi bir uzak sunucuya **hiçbir veri göndermez**. 
 - **30 Günlük Harici Yedek Bildirimi:** Telefonun kaybolması, sıfırlanması veya bozulması riskine karşı 30 gün boyunca harici yedek alınmadığında kullanıcıyı nazikçe uyarır.
 - **Kalıcı Depolama Garantisi:** `navigator.storage.persist()` ile Android tarayıcısının otomatik önbellek temizliklerinde veritabanının silinmesi engellenir.
 - **Tek Dokunuşla Yedekleme:** Web Share API ve standart indirme ile JSON ve hekimle paylaşılabilir CSV raporları.
+- **Period Calendar (.pc / .bak) Doğrudan İçe Aktarma:** Popüler döngü takip uygulamalarından (Period Calendar / My Calendar / Simple Design) alınan `.pc` veya `.bak` yedekleri, doğrudan telefonun tarayıcısından (saf TypeScript ile yazılmış hafif ZIP & SQLite B-Tree motoruyla) sıfır-sunucu güvencesiyle Regl uygulamasına aktarılabilir.
 
 ### 5. Samsung Galaxy & Android PWA Ergonomisi
 - **One UI Başparmak Erişilebilirliği:** Ekranın alt 2/3'lük kısmına yerleştirilmiş hızlı giriş çipleri ve minimum 48px dokunma alanları.
@@ -87,8 +88,11 @@ npm run dev
 # Tip denetimi
 npm run typecheck
 
-# Birim ve algoritma testlerini çalıştırın (80 test)
+# Birim ve algoritma testlerini çalıştırın (91 test)
 npm run test
+
+# Period Calendar .pc/.bak yedeğini Regl JSON formatına dönüştürün
+npm run convert:pc yedek.pc regl-yedek.json
 
 # Linter kontrolü
 npm run lint
@@ -121,9 +125,9 @@ Depoda `.github/workflows/deploy.yml` iş akışı bulunmaktadır.
 
 ## 🧪 Test Paketi ve Doğrulama
 
-- **80 Birim ve Kural Testi:** Tüm tarih hesaplamaları, Sensiplan T1–T6 / M1–M2 / D1 / E1–E4 kuralları, kriptografi zarf şifrelemesi, IndexedDB işlemleri ve afet kurtarma snapshots testleri eksiksiz geçmektedir.
+- **91 Birim ve Kural Testi:** Tüm tarih hesaplamaları, Sensiplan T1–T6 / M1–M2 / D1 / E1–E4 kuralları, kriptografi zarf şifrelemesi, IndexedDB işlemleri, afet kurtarma snapshots ve Period Calendar SQLite aktarım testleri eksiksiz geçmektedir.
 - **Katı TypeScript:** `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess` ve `noImplicitOverride` bayrakları etkindir.
-- **39.38 kB Gzipped:** Tüm uygulama kütüphaneleri ve grafikleriyle birlikte optimize bir üretim çıktısına sahiptir.
+- **~40 kB Gzipped İlk Yükleme:** Tüm uygulama kütüphaneleri ve grafikleriyle birlikte optimize bir üretim çıktısına sahiptir; göç modülü dinamik kod bölümleme (`code-splitting`) ile lazy-load edilir.
 
 ---
 

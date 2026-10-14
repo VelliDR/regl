@@ -12,6 +12,7 @@ import {
   importBackup,
   validateBackupString,
 } from "../../data/backup";
+import type { ValidatedBackupPayload } from "../../data/schemas";
 import {
   createSnapshotNow,
   deleteSnapshot,
@@ -162,15 +163,36 @@ export function SettingsScreen() {
     if (!file) return;
 
     try {
-      const text = await file.text();
-      const payload = validateBackupString(text);
-      const summary = await importBackup(payload, "merge");
-      setBackupMessage(
-        `Yedek içe aktarıldı: ${summary.importedCount} gün güncellendi ✅`,
-      );
+      const fileName = file.name.toLowerCase();
+      let payload: ValidatedBackupPayload;
+
+      if (fileName.endsWith(".pc") || fileName.endsWith(".bak")) {
+        setBackupMessage(
+          "Period Calendar (.pc / .bak) yedeği çözümleniyor... ⏳",
+        );
+        const buffer = await file.arrayBuffer();
+        const rawBytes = new Uint8Array(buffer);
+        const { convertPeriodCalendarToRegl } = await import(
+          "../../data/periodCalendarMigration"
+        );
+        payload = await convertPeriodCalendarToRegl(rawBytes);
+        const summary = await importBackup(payload, "merge");
+        setBackupMessage(
+          `Period Calendar verileri başarıyla aktarıldı: ${summary.importedCount} gün eklendi ✅`,
+        );
+      } else {
+        const text = await file.text();
+        payload = validateBackupString(text);
+        const summary = await importBackup(payload, "merge");
+        setBackupMessage(
+          `Yedek içe aktarıldı: ${summary.importedCount} gün güncellendi ✅`,
+        );
+      }
       await reloadAppState();
     } catch (err) {
       setBackupMessage(`İçe aktarma hatası: ${(err as Error).message}`);
+    } finally {
+      input.value = "";
     }
   };
 
@@ -753,10 +775,10 @@ export function SettingsScreen() {
               alignItems: "center",
             }}
           >
-            📥 {STRINGS.settings.importBackup}
+            📥 {STRINGS.settings.importBackup} (.json, .pc, .bak)
             <input
               type="file"
-              accept=".json"
+              accept=".json,.pc,.bak"
               onChange={handleFileImport}
               style={{ display: "none" }}
             />

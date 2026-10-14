@@ -3,6 +3,7 @@ interface CycleRingProps {
   readonly estimatedCycleLength: number;
   readonly daysUntilPeriod?: number | undefined;
   readonly isPeriodDueToday?: boolean | undefined;
+  readonly size?: number | undefined;
 }
 
 export function CycleRing({
@@ -10,9 +11,10 @@ export function CycleRing({
   estimatedCycleLength,
   daysUntilPeriod,
   isPeriodDueToday,
+  size: customSize,
 }: CycleRingProps) {
-  const size = 180;
-  const strokeWidth = 14;
+  const size = customSize ?? 144;
+  const strokeWidth = 11;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 

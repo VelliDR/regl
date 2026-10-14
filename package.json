@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\" \"tests/**/*.{ts,tsx}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\" \"tests/**/*.{ts,tsx}\"",
+    "convert:pc": "vite-node scripts/convert_pc_backup.ts"
   },
   "dependencies": {
     "@preact/signals": "^2.0.1",

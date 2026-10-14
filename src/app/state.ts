@@ -43,6 +43,7 @@ export const evaluationSignal = computed<CycleEvaluation>(() => {
 
   return evaluateCycleState(entries, today, {
     fallbackLength: settings.defaultCycleLength,
+    trackingMode: settings.trackingMode,
   });
 });
 
