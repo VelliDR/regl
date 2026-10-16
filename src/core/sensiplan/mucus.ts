@@ -1,3 +1,4 @@
+import { compareISODate } from "../date";
 import { DayEntry, ISODate, MucusAppearance, MucusSensation } from "../types";
 
 export type SensiplanMucusCategory = "t" | "f" | "S" | "S_plus";
@@ -70,6 +71,13 @@ export function evaluateMucusPeak(
 
   // Find candidate peak days: days with high fertility mucus ('S' or 'S_plus')
   // that are followed by 3 consecutive days of strictly lower quality mucus.
+  const candidates: {
+    peakDayDate: ISODate;
+    rank: number;
+    evaluationCompleteDate: ISODate;
+    postPeakDates: readonly ISODate[];
+  }[] = [];
+
   for (let i = 0; i < entriesWithMucus.length - 3; i++) {
     const candidate = entriesWithMucus[i]!;
     const candidateCategory = deriveMucusCategory(
@@ -108,14 +116,30 @@ export function evaluateMucusPeak(
 
     // Must be 3 consecutive days of lower quality mucus
     if (r1 < candidateRank && r2 < candidateRank && r3 < candidateRank) {
-      return {
-        isConfirmed: true,
+      candidates.push({
         peakDayDate: candidate.date,
+        rank: candidateRank,
         evaluationCompleteDate: dayPlus3.date,
         postPeakDates: [dayPlus1.date, dayPlus2.date, dayPlus3.date],
-        explanation: `Mukus kuralı (M2) sağlandı: ${candidate.date} mukus zirve günü olarak saptandı ve ardından 3 gün boyunca kuruma/düşüş doğrulandı.`,
-      };
+      });
     }
+  }
+
+  if (candidates.length > 0) {
+    // Sensiplan: Peak day is the LAST day of the highest quality mucus observed
+    candidates.sort((a, b) => {
+      if (b.rank !== a.rank) return b.rank - a.rank;
+      return compareISODate(b.peakDayDate, a.peakDayDate);
+    });
+
+    const best = candidates[0]!;
+    return {
+      isConfirmed: true,
+      peakDayDate: best.peakDayDate,
+      evaluationCompleteDate: best.evaluationCompleteDate,
+      postPeakDates: best.postPeakDates,
+      explanation: `Mukus kuralı (M2) sağlandı: ${best.peakDayDate} mukus zirve günü olarak saptandı ve ardından 3 gün boyunca kuruma/düşüş doğrulandı.`,
+    };
   }
 
   return {

@@ -1,3 +1,4 @@
+import { addDays } from "../core/date";
 import { ISODate } from "../core/types";
 
 export interface CalendarEventOptions {
@@ -30,10 +31,15 @@ export function generateIcsCalendarEvent(
 
   const startFormatted = `${dateStr}T${String(hours).padStart(2, "0")}${String(minutes).padStart(2, "0")}00`;
 
-  // Calculate end time
-  const endHours = hours + Math.floor((minutes + duration) / 60);
-  const endMinutes = (minutes + duration) % 60;
-  const endFormatted = `${dateStr}T${String(endHours).padStart(2, "0")}${String(endMinutes).padStart(2, "0")}00`;
+  // Calculate end time and handle midnight rollover safely
+  const totalEndMinutes = hours * 60 + minutes + duration;
+  const endHours = Math.floor(totalEndMinutes / 60) % 24;
+  const endMinutes = totalEndMinutes % 60;
+  const daysToAdd = Math.floor(totalEndMinutes / (24 * 60));
+  const endDateStr = daysToAdd > 0
+    ? addDays(options.startDate, daysToAdd).replace(/-/g, "")
+    : dateStr;
+  const endFormatted = `${endDateStr}T${String(endHours).padStart(2, "0")}${String(endMinutes).padStart(2, "0")}00`;
 
   const alarmTrigger = alarmBefore > 0 ? `-PT${alarmBefore}M` : "PT0M";
 

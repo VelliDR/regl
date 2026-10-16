@@ -1,4 +1,4 @@
-import { daysBetween } from "./date";
+import { compareISODate, daysBetween } from "./date";
 import { Cycle, partitionCycles } from "./cycles";
 import {
   EwmaPredictionConfig,
@@ -36,6 +36,7 @@ export interface SensiplanFullEvaluation {
 export interface CycleEvaluation {
   readonly targetDate: ISODate;
   readonly activeCycle?: Cycle;
+  readonly targetCycle?: Cycle;
   readonly currentCycleDay?: number; // 1-indexed (e.g. Day 14)
   readonly completedCycles: readonly Cycle[];
   readonly prediction: PeriodPrediction;
@@ -57,11 +58,24 @@ export function evaluateCycleState(
   today: ISODate,
   options: EvaluationOptions = {},
 ): CycleEvaluation {
-  const { completedCycles, activeCycle } = partitionCycles(entries);
+  // Ensure entries are strictly sorted chronologically
+  const sortedEntries = [...entries].sort((a, b) => compareISODate(a.date, b.date));
+  const { completedCycles, activeCycle, allCycles } = partitionCycles(sortedEntries);
 
-  // If there's an active cycle, calculate cycle day relative to `today`
+  // Find which cycle `today` belongs to
+  const targetCycle =
+    allCycles.find(
+      (c) =>
+        compareISODate(today, c.startDate) >= 0 &&
+        (!c.endDate || compareISODate(today, c.endDate) <= 0),
+    ) ?? (activeCycle && compareISODate(today, activeCycle.startDate) >= 0 ? activeCycle : undefined);
+
+  // Calculate cycle day relative to targetCycle, or fallback to activeCycle
   let currentCycleDay: number | undefined;
-  if (activeCycle) {
+  if (targetCycle) {
+    const diff = daysBetween(targetCycle.startDate, today);
+    currentCycleDay = diff >= 0 ? diff + 1 : undefined;
+  } else if (activeCycle) {
     const diff = daysBetween(activeCycle.startDate, today);
     currentCycleDay = diff >= 0 ? diff + 1 : undefined;
   }
@@ -72,17 +86,24 @@ export function evaluateCycleState(
 
   let sensiplan: SensiplanFullEvaluation | undefined;
 
-  if (options.trackingMode === "symptothermal" && activeCycle) {
-    // Filter entries belonging to the active cycle
-    const activeCycleEntries = entries.filter((e) => {
-      const diff = daysBetween(activeCycle.startDate, e.date);
-      return diff >= 0;
+  const cycleToEvaluate = targetCycle ?? activeCycle;
+
+  if (options.trackingMode === "symptothermal" && cycleToEvaluate) {
+    // Filter entries belonging to this specific cycle
+    const cycleEntries = sortedEntries.filter((e) => {
+      const afterStart = compareISODate(e.date, cycleToEvaluate.startDate) >= 0;
+      const beforeEnd = cycleToEvaluate.endDate
+        ? compareISODate(e.date, cycleToEvaluate.endDate) <= 0
+        : true;
+      return afterStart && beforeEnd;
     });
 
-    const targetEntry = entries.find((e) => e.date === today);
+    const entriesUpToToday = cycleEntries.filter(
+      (e) => compareISODate(e.date, today) <= 0,
+    );
 
-    const tempResult = evaluateTemperatureShift(activeCycleEntries);
-    const mucusResult = evaluateMucusPeak(activeCycleEntries);
+    const tempResult = evaluateTemperatureShift(cycleEntries);
+    const mucusResult = evaluateMucusPeak(cycleEntries);
     const doubleCheck = evaluateDoubleCheck(tempResult, mucusResult, today);
 
     const history: HistoricalCycleData = options.history ?? {
@@ -92,7 +113,7 @@ export function evaluateCycleState(
 
     const preOvulatory = evaluatePreOvulatoryPhase(
       currentCycleDay ?? 1,
-      targetEntry,
+      entriesUpToToday,
       history,
     );
 
@@ -130,6 +151,7 @@ export function evaluateCycleState(
   return {
     targetDate: today,
     ...(activeCycle ? { activeCycle } : {}),
+    ...(targetCycle ? { targetCycle } : {}),
     ...(currentCycleDay !== undefined ? { currentCycleDay } : {}),
     completedCycles,
     prediction,

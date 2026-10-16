@@ -29,6 +29,17 @@ describe("Hatırlatıcılar ve Takvim Entegrasyonu (reminders.ts)", () => {
     expect(ics).toContain("END:VCALENDAR");
   });
 
+  it("Gece yarısını aşan sürelerde saat ve tarih taşması hatasız işlenmelidir", () => {
+    const ics = generateIcsCalendarEvent({
+      startDate: parseISODate("2026-10-20"),
+      time: "23:45",
+      durationMinutes: 30, // 00:15 ertesi gün
+    });
+
+    expect(ics).toContain("DTSTART:20261020T234500");
+    expect(ics).toContain("DTEND:20261021T001500");
+  });
+
   describe("Uygulama İçi Bildirim Değerlendirmesi", () => {
     it("Bugün kayıt girilmemişse uyarı bildirimi üretmelidir", () => {
       const notices = evaluateInAppNotices(false, 10, "2026-10-10");

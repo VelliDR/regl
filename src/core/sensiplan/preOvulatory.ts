@@ -25,26 +25,35 @@ export interface HistoricalCycleData {
  */
 export function evaluatePreOvulatoryPhase(
   cycleDay: number,
-  currentEntry: DayEntry | undefined,
+  currentEntryOrEntries: DayEntry | readonly DayEntry[] | undefined,
   history: HistoricalCycleData,
 ): PreOvulatoryResult {
   // [E4] Emergency Mucus Cutoff:
   // Regardless of historical calculations, as soon as any mucus or moist/wet sensation is observed,
   // the pre-ovulatory infertile phase terminates immediately!
-  if (currentEntry?.mucus) {
+  const entriesToCheck = Array.isArray(currentEntryOrEntries)
+    ? currentEntryOrEntries
+    : currentEntryOrEntries
+      ? [currentEntryOrEntries]
+      : [];
+
+  const mucusEntry = entriesToCheck.find((e) => {
+    if (!e.mucus) return false;
     const category = deriveMucusCategory(
-      currentEntry.mucus.sensation,
-      currentEntry.mucus.appearance,
+      e.mucus.sensation,
+      e.mucus.appearance,
     );
-    if (category !== "t") {
-      return {
-        isPreOvulatoryInfertile: false,
-        lastInfertileCycleDay: Math.max(1, cycleDay - 1),
-        appliedRule: "E4_MUCUS_OVERRIDE",
-        explanation:
-          "Acil kural (E4): Mukus veya nemlilik hissi başladığı için pre-ovülatuar kısır dönem derhal sonlanmıştır.",
-      };
-    }
+    return category !== "t";
+  });
+
+  if (mucusEntry) {
+    return {
+      isPreOvulatoryInfertile: false,
+      lastInfertileCycleDay: Math.max(1, cycleDay - 1),
+      appliedRule: "E4_MUCUS_OVERRIDE",
+      explanation:
+        "Acil kural (E4): Mukus veya nemlilik hissi başladığı için pre-ovülatuar kısır dönem derhal sonlanmıştır.",
+    };
   }
 
   // Determine last infertile day baseline from historical rules

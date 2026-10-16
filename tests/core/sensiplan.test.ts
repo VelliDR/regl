@@ -171,6 +171,27 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(res.peakDayDate).toBe("2026-05-02");
       expect(res.evaluationCompleteDate).toBe("2026-05-05");
     });
+
+    it("[M2] Erken geçici zirve ve sonrasında daha yüksek kaliteli ovülasyon zirvesi varsa en yüksek/son zirve seçilmelidir", () => {
+      // Gün 2: S (rank 2) -> Gün 3: f, Gün 4: t, Gün 5: t (erken geçici dalga)
+      // Gün 12: S+ (rank 3, gerçek ovülatuar zirve) -> Gün 13: f, Gün 14: t, Gün 15: t
+      const entries: DayEntry[] = [
+        makeDay("2026-05-01", undefined, false, "moist", "creamy"),
+        makeDay("2026-05-02", undefined, false, "wet", "clear"), // Erken 'S'
+        makeDay("2026-05-03", undefined, false, "moist", "thick"),
+        makeDay("2026-05-04", undefined, false, "dry", "none"),
+        makeDay("2026-05-05", undefined, false, "dry", "none"),
+        makeDay("2026-05-12", undefined, false, "wet", "stretchy"), // Gerçek 'S+' zirvesi
+        makeDay("2026-05-13", undefined, false, "moist", "creamy"),
+        makeDay("2026-05-14", undefined, false, "dry", "none"),
+        makeDay("2026-05-15", undefined, false, "dry", "none"),
+      ];
+
+      const res = evaluateMucusPeak(entries);
+      expect(res.isConfirmed).toBe(true);
+      expect(res.peakDayDate).toBe("2026-05-12"); // S+ olan gün seçildi
+      expect(res.evaluationCompleteDate).toBe("2026-05-15");
+    });
   });
 
   describe("Çift Kontrol Kuralı [D1]", () => {
@@ -235,6 +256,22 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(res.isPreOvulatoryInfertile).toBe(false);
       expect(res.appliedRule).toBe("E4_MUCUS_OVERRIDE");
     });
+
+    it("[E4] Erken günde (3. gün) mukus görüldükten sonra sonraki gün (4. gün) kuru olsa dahi pre-ovülatuar kısır dönem kapalı kalmalıdır", () => {
+      const cycleEntriesUpToDay4: DayEntry[] = [
+        makeDay("2026-05-01", undefined, false, undefined, undefined, "heavy"),
+        makeDay("2026-05-02", undefined, false, undefined, undefined, "medium"),
+        makeDay("2026-05-03", undefined, false, "moist", "creamy"), // 3. gün mukus başladı
+        makeDay("2026-05-04", undefined, false, "dry", "none"), // 4. gün kuru
+      ];
+      // 4. gün değerlendiriliyor (gün <= 5 olmasına rağmen 3. günde mukus başladığı için kısır DEĞİLDİR)
+      const res = evaluatePreOvulatoryPhase(4, cycleEntriesUpToDay4, {
+        completedCycles: [],
+        previousCycleWasOvulatory: true,
+      });
+      expect(res.isPreOvulatoryInfertile).toBe(false);
+      expect(res.appliedRule).toBe("E4_MUCUS_OVERRIDE");
+    });
   });
 
   describe("evaluateCycleState Birleşik Entegrasyonu", () => {
@@ -261,6 +298,36 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(res.sensiplan?.mucus.isConfirmed).toBe(true);
       expect(res.sensiplan?.doubleCheck.isPostOvulatoryInfertile).toBe(true);
       expect(res.sensiplan?.overallFertilityState).toBe("infertile");
+    });
+
+    it("Tamamlanmış geçmiş döngü seçildiğinde hedef döngünün Sensiplan değerlendirmesi hatasız yapılmalıdır", () => {
+      // 1. Döngü (1-28 Mayıs) -> BBT doğrulamalı
+      // 2. Döngü (29 Mayıs...) -> Yeni başlayan aktif döngü
+      const entries: DayEntry[] = [
+        makeDay("2026-05-01", 36.4, false, undefined, undefined, "heavy"),
+        makeDay("2026-05-02", 36.45),
+        makeDay("2026-05-03", 36.5),
+        makeDay("2026-05-04", 36.45),
+        makeDay("2026-05-05", 36.5),
+        makeDay("2026-05-06", 36.55),
+        makeDay("2026-05-07", 36.65, false, "wet", "stretchy"),
+        makeDay("2026-05-08", 36.7, false, "moist", "thick"),
+        makeDay("2026-05-09", 36.8, false, "dry", "none"),
+        makeDay("2026-05-10", 36.8, false, "dry", "none"),
+        // 2. Döngü başlangıcı
+        makeDay("2026-05-29", 36.4, false, undefined, undefined, "heavy"),
+      ];
+
+      // 1. Döngünün başlangıç tarihini sorgula (ChartScreen / PhaseDurationChart mantığı)
+      const pastEval = evaluateCycleState(entries, parseISODate("2026-05-01"), {
+        trackingMode: "symptothermal",
+      });
+
+      expect(pastEval.targetCycle).toBeDefined();
+      expect(pastEval.targetCycle?.id).toBe(1);
+      expect(pastEval.currentCycleDay).toBe(1);
+      expect(pastEval.sensiplan?.temperature.isConfirmed).toBe(true);
+      expect(pastEval.sensiplan?.temperature.firstHighDayDate).toBe("2026-05-07");
     });
   });
 });

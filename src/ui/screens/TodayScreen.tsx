@@ -8,7 +8,7 @@ import {
   selectedDateSignal,
   settingsSignal,
 } from "../../app/state";
-import { addDays, daysBetween, parseISODate } from "../../core/date";
+import { addDays, compareISODate, daysBetween, parseISODate } from "../../core/date";
 import {
   BleedingIntensity,
   CentiCelsius,
@@ -267,7 +267,10 @@ export function determineCyclePhase(params: {
     follicular: {
       startDate: follicularStartDate,
       endDate: follicularEndDate,
-      dateRangeText: formatDateRangeTR(follicularStartDate, follicularEndDate),
+      dateRangeText:
+        compareISODate(follicularStartDate, follicularEndDate) <= 0
+          ? formatDateRangeTR(follicularStartDate, follicularEndDate)
+          : "—",
     },
     ovulationWindow: {
       startDate: ovWindowStartDate,

@@ -284,7 +284,7 @@ export function CycleTrendChart({
                 spread <= 4 ? "var(--fertile-color)" : "var(--accent-primary)",
             }}
           >
-            ±{spread} gün
+            {spread} gün
           </strong>
         </div>
       </div>
