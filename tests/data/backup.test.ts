@@ -1,23 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import "fake-indexeddb/auto";
-import { closeDb } from "../../src/data/db";
-import { dayRepository } from "../../src/data/repo";
+import { closeDb, getDb, isEncryptedDayRecord } from "../../src/data/db";
+import { generateDek } from "../../src/data/crypto";
+import { DEFAULT_USER_SETTINGS, dayRepository } from "../../src/data/repo";
 import { parseISODate } from "../../src/core/date";
 import { CentiCelsius, DayEntry } from "../../src/core/types";
 import {
+  decryptVaultBackup,
   exportToCsv,
+  exportToEncryptedVault,
   exportToJson,
   importBackup,
+  isEncryptedVaultString,
   validateBackupString,
 } from "../../src/data/backup";
 
 describe("Yedekleme ve Geri Yükleme Motoru (backup.ts)", () => {
   beforeEach(async () => {
+    dayRepository.clearActiveDek();
     closeDb();
-    await dayRepository.clearAllDays();
+    await dayRepository.clearAllData();
   });
 
   afterEach(() => {
+    dayRepository.clearActiveDek();
     closeDb();
   });
 
@@ -129,5 +135,99 @@ describe("Yedekleme ve Geri Yükleme Motoru (backup.ts)", () => {
       const allDays = await dayRepository.getAllDays();
       expect(allDays.length).toBe(validated.days.length);
     }
+  });
+
+  it("Şifreli .reglvault dışa/içe aktarma gidiş-dönüşü çalışmalı ve yanlış parolayı reddetmelidir", async () => {
+    const vaultStr = await exportToEncryptedVault(
+      sampleDays,
+      {
+        ...DEFAULT_USER_SETTINGS,
+        lockEnabled: true,
+        lockEnvelopeJson: '{"secret":"must-strip"}',
+      },
+      "VaultPass123!",
+    );
+
+    expect(isEncryptedVaultString(vaultStr)).toBe(true);
+    expect(vaultStr).not.toContain("Döngü başlangıcı");
+    expect(vaultStr).not.toContain("3665");
+
+    await expect(
+      decryptVaultBackup(vaultStr, "YanlisParola"),
+    ).rejects.toThrow();
+
+    const decrypted = await decryptVaultBackup(vaultStr, "VaultPass123!");
+    expect(decrypted.days.length).toBe(2);
+    expect(decrypted.settings?.lockEnabled).toBeUndefined();
+    expect(decrypted.settings?.lockEnvelopeJson).toBeUndefined();
+  });
+
+  it("CSV dışa aktarma UTF-8 BOM içermeli ve formül enjeksiyonuna karşı korumalı olmalıdır", () => {
+    const maliciousDays: DayEntry[] = [
+      {
+        date: parseISODate("2026-05-03"),
+        note: "=CMD|'/C calc'!A0",
+        updatedAt: 2000,
+      },
+    ];
+    const csv = exportToCsv(maliciousDays);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toContain(`"'=CMD|'/C calc'!A0"`);
+  });
+
+  it("Geçersiz takvim tarihi içeren yedekler Valibot şeması tarafından reddedilmelidir", () => {
+    expect(() =>
+      validateBackupString(
+        JSON.stringify({
+          format: "regl-backup-v1",
+          exportedAt: new Date().toISOString(),
+          days: [{ date: "2026-02-31", updatedAt: 1000 }],
+        }),
+      ),
+    ).toThrow();
+  });
+
+  it("importBackup sırasında yerel uygulama kilidi ayarları korunmalıdır", async () => {
+    const dek = await generateDek();
+    dayRepository.setActiveDek(dek);
+
+    await dayRepository.saveSettings({
+      ...DEFAULT_USER_SETTINGS,
+      lockEnabled: true,
+      lockEnvelopeJson: '{"salt":"abc"}',
+      lockAutoMinutes: 5,
+    });
+
+    const payload = validateBackupString(
+      exportToJson(sampleDays, DEFAULT_USER_SETTINGS),
+    );
+    await importBackup(payload, "replace");
+
+    const settingsAfter = await dayRepository.getSettings();
+    expect(settingsAfter.lockEnabled).toBe(true);
+    expect(settingsAfter.lockEnvelopeJson).toBe('{"salt":"abc"}');
+    expect(settingsAfter.lockAutoMinutes).toBe(5);
+
+    // İçe aktarılan günler aktif DEK ile şifreli yazılmış olmalıdır
+    const db = await getDb();
+    const rawDay = await db.get("days", sampleDays[0]!.date);
+    expect(isEncryptedDayRecord(rawDay)).toBe(true);
+  });
+
+  it("exportToCsv çıktısı serviks (rahim ağzı) gözlem sütunlarını içermelidir", () => {
+    const daysWithCervix = [
+      {
+        date: parseISODate("2026-10-12"),
+        cervix: {
+          position: "high" as const,
+          firmness: "soft" as const,
+          opening: "open" as const,
+        },
+        updatedAt: 3000,
+      },
+    ];
+    const csv = exportToCsv(daysWithCervix);
+    expect(csv).toContain("Serviks Konum,Serviks Sertlik,Serviks Açıklık");
+    expect(csv).toContain(",high,soft,open");
   });
 });

@@ -1,10 +1,15 @@
-import { useState } from "preact/hooks";
-import { entriesSignal, evaluationSignal } from "../../app/state";
-import { addDays, daysBetween } from "../../core/date";
-import { evaluateCycleState } from "../../core/evaluate";
+import { useEffect, useState } from "preact/hooks";
+import {
+  entriesSignal,
+  evaluationSignal,
+  getLocalTodayISO,
+} from "../../app/state";
+import { addDays, compareISODate, daysBetween } from "../../core/date";
+import { evaluateCycleState, getCycleEntries } from "../../core/evaluate";
 import { deriveMucusCategory } from "../../core/sensiplan/mucus";
 import { DayEntry, ISODate } from "../../core/types";
 import { MultiCycleOverlayChart } from "../components/charts/MultiCycleOverlayChart";
+import { STRINGS } from "../strings.tr";
 
 export function ChartScreen() {
   const evaluation = evaluationSignal.value;
@@ -18,9 +23,26 @@ export function ChartScreen() {
     evaluation.activeCycle?.id ?? cycles[cycles.length - 1]?.id,
   );
   const [viewMode, setViewMode] = useState<"single" | "overlay">("single");
+  const [selectedPointDate, setSelectedPointDate] = useState<ISODate | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (
+      cycles.length > 0 &&
+      (selectedCycleId === undefined ||
+        !cycles.some((c) => c.id === selectedCycleId))
+    ) {
+      setSelectedCycleId(
+        evaluation.activeCycle?.id ?? cycles[cycles.length - 1]?.id,
+      );
+    }
+  }, [cycles, selectedCycleId, evaluation.activeCycle?.id]);
 
   const activeCycle =
-    cycles.find((c) => c.id === selectedCycleId) ?? evaluation.activeCycle;
+    cycles.find((c) => c.id === selectedCycleId) ??
+    evaluation.activeCycle ??
+    cycles[cycles.length - 1];
 
   if (!activeCycle) {
     return (
@@ -36,11 +58,20 @@ export function ChartScreen() {
     );
   }
 
-  // Calculate cycle days from cycle.startDate to cycle.endDate (or last recorded day)
   const cycleStartDate = activeCycle.startDate;
-  const cycleEndDate = activeCycle.endDate ?? addDays(cycleStartDate, 35);
+  const thisCycleEntries = getCycleEntries(allEntries, activeCycle);
+  const lastCycleEntryDate =
+    thisCycleEntries[thisCycleEntries.length - 1]?.date ?? cycleStartDate;
+
+  // Calculate cycle days from cycle.startDate to cycle.endDate (or latest active observation / +35)
+  const defaultActiveEnd = addDays(cycleStartDate, 35);
+  const cycleEndDate =
+    activeCycle.endDate ??
+    (compareISODate(lastCycleEntryDate, defaultActiveEnd) > 0
+      ? lastCycleEntryDate
+      : defaultActiveEnd);
   const totalDays = Math.min(
-    45,
+    90,
     Math.max(15, daysBetween(cycleStartDate, cycleEndDate) + 1),
   );
 
@@ -64,8 +95,19 @@ export function ChartScreen() {
     });
   }
 
-  // Sensiplan evaluation for this specific cycle
-  const cycleEval = evaluateCycleState(allEntries, cycleStartDate, {
+  // Evaluate at the end of a completed cycle, or at real today / last recorded day for active cycle
+  const realToday = getLocalTodayISO();
+  const evalAnchorDate =
+    activeCycle.endDate ??
+    (compareISODate(realToday, lastCycleEntryDate) >= 0
+      ? realToday
+      : lastCycleEntryDate);
+  const safeAnchor =
+    compareISODate(evalAnchorDate, cycleStartDate) >= 0
+      ? evalAnchorDate
+      : cycleStartDate;
+
+  const cycleEval = evaluateCycleState(allEntries, safeAnchor, {
     trackingMode: "symptothermal",
   });
   const sensi = cycleEval.sensiplan;
@@ -81,9 +123,39 @@ export function ChartScreen() {
   const graphWidth = chartWidth - paddingLeft - paddingRight;
   const graphHeight = chartHeight - paddingTop - paddingBottom;
 
-  // Temperature scale: 36.00 °C (3600) to 37.40 °C (3740)
-  const minTemp = 3600;
-  const maxTemp = 3740;
+  // Temperature data points
+  const rawPoints: {
+    temp: number;
+    date: ISODate;
+    excluded: boolean;
+    dayIdx: number;
+  }[] = [];
+  for (const cd of cycleDays) {
+    if (cd.entry?.bbt) {
+      rawPoints.push({
+        temp: cd.entry.bbt.value,
+        date: cd.date,
+        excluded: cd.entry.bbt.excluded ?? false,
+        dayIdx: cd.dayIndex,
+      });
+    }
+  }
+
+  // Dynamic Y-axis bounds (defaults to 36.00 - 37.40 °C, expands automatically for outliers)
+  const rawTemps = rawPoints.map((p) => p.temp);
+  const minTemp =
+    rawTemps.length > 0
+      ? Math.min(3600, Math.floor((Math.min(...rawTemps) - 10) / 20) * 20)
+      : 3600;
+  const maxTemp =
+    rawTemps.length > 0
+      ? Math.max(3740, Math.ceil((Math.max(...rawTemps) + 10) / 20) * 20)
+      : 3740;
+
+  const tempTicks: number[] = [];
+  for (let t = minTemp + 20; t <= maxTemp - 20; t += 20) {
+    tempTicks.push(t);
+  }
 
   const getYForTemp = (temp: number) => {
     const clamped = Math.max(minTemp, Math.min(maxTemp, temp));
@@ -95,27 +167,11 @@ export function ChartScreen() {
     return paddingLeft + ((dayIdx - 1) / (totalDays - 1)) * graphWidth;
   };
 
-  // Temperature data points
-  const points: {
-    x: number;
-    y: number;
-    temp: number;
-    date: ISODate;
-    excluded: boolean;
-    dayIdx: number;
-  }[] = [];
-  for (const cd of cycleDays) {
-    if (cd.entry?.bbt) {
-      points.push({
-        x: getXForDayIndex(cd.dayIndex),
-        y: getYForTemp(cd.entry.bbt.value),
-        temp: cd.entry.bbt.value,
-        date: cd.date,
-        excluded: cd.entry.bbt.excluded ?? false,
-        dayIdx: cd.dayIndex,
-      });
-    }
-  }
+  const points = rawPoints.map((p) => ({
+    ...p,
+    x: getXForDayIndex(p.dayIdx),
+    y: getYForTemp(p.temp),
+  }));
 
   // Build SVG path
   const pathD = points
@@ -295,9 +351,11 @@ export function ChartScreen() {
                   style={{ fontSize: "14px", color: "var(--text-primary)" }}
                 >
                   Klinik Durum:{" "}
-                  {sensi.overallFertilityState === "infertile"
-                    ? "Luteal Kısır Dönem (Geç Ovülasyon)"
-                    : "Doğurgan Dönem (Pencere Açık)"}
+                  {sensi.doubleCheck.isPostOvulatoryInfertile
+                    ? "Luteal Kısır Dönem (Ovülasyon Doğrulandı)"
+                    : sensi.preOvulatory.isPreOvulatoryInfertile
+                      ? "Pre-ovülatuar Kısır Dönem"
+                      : "Doğurgan Dönem (Pencere Açık)"}
                 </strong>
               </div>
               <p
@@ -329,7 +387,7 @@ export function ChartScreen() {
               style={{ display: "block" }}
             >
               {/* Y Axis Grid lines (every 0.20 °C) */}
-              {[3620, 3640, 3660, 3680, 3700, 3720].map((t) => {
+              {tempTicks.map((t) => {
                 const y = getYForTemp(t);
                 return (
                   <g key={t}>
@@ -397,17 +455,48 @@ export function ChartScreen() {
               {points.map((p) => {
                 const isHigh =
                   sensi?.temperature.highDates.includes(p.date) ?? false;
+                const isSixLow =
+                  sensi?.temperature.sixLowDates.includes(p.date) ?? false;
                 const highIndex =
                   isHigh && sensi
                     ? sensi.temperature.highDates.indexOf(p.date) + 1
                     : undefined;
 
+                const isSelectedPoint = selectedPointDate === p.date;
+
                 return (
                   <g key={p.date}>
+                    {isSelectedPoint && (
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r="9"
+                        fill="var(--fertile-surface)"
+                        stroke="var(--accent-primary)"
+                        strokeWidth="1.5"
+                      />
+                    )}
                     <circle
                       cx={p.x}
                       cy={p.y}
-                      r={p.excluded ? 3.5 : 5}
+                      r={p.excluded ? 3.5 : isSelectedPoint ? 6.5 : 5}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${p.date} BBT ${(p.temp / 100).toFixed(2)} °C`}
+                      onClick={() =>
+                        setSelectedPointDate((prev) =>
+                          prev === p.date ? null : p.date,
+                        )
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedPointDate((prev) =>
+                            prev === p.date ? null : p.date,
+                          );
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
                       fill={
                         p.excluded
                           ? "none"
@@ -415,8 +504,14 @@ export function ChartScreen() {
                             ? "var(--fertile-color)"
                             : "#5ea2ef"
                       }
-                      stroke={p.excluded ? "var(--text-muted)" : "#ffffff"}
-                      strokeWidth="1.5"
+                      stroke={
+                        p.excluded
+                          ? "var(--text-muted)"
+                          : isSixLow
+                            ? "#f4a261"
+                            : "#ffffff"
+                      }
+                      strokeWidth={isSixLow ? "2" : "1.5"}
                       strokeDasharray={p.excluded ? "2 2" : undefined}
                     />
                     {p.excluded && (
@@ -543,6 +638,107 @@ export function ChartScreen() {
               </text>
             </svg>
           </div>
+
+          {/* Interactive Point Inspector Card */}
+          {(() => {
+            if (!selectedPointDate) return null;
+            const pt = points.find((item) => item.date === selectedPointDate);
+            const ptEntry = entriesMap.get(selectedPointDate);
+            if (!pt || !ptEntry?.bbt) return null;
+
+            const mucusStr = ptEntry.mucus
+              ? `${STRINGS.mucusSensation[ptEntry.mucus.sensation]} / ${STRINGS.mucusAppearance[ptEntry.mucus.appearance]}`
+              : undefined;
+
+            return (
+              <div
+                data-testid="bbt-point-inspector"
+                style={{
+                  marginTop: "12px",
+                  padding: "12px 14px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: "var(--radius-md)",
+                  fontSize: "12px",
+                  color: "var(--text-primary)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "6px",
+                  }}
+                >
+                  <strong>
+                    📍 {ptEntry.date} • Döngü {pt.dayIdx}. Gün
+                  </strong>
+                  <button
+                    type="button"
+                    aria-label="Detayı Kapat"
+                    onClick={() => setSelectedPointDate(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--text-muted)",
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      padding: "2px 6px",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <span>
+                    🌡️{" "}
+                    <strong style={{ color: "var(--text-primary)" }}>
+                      {(ptEntry.bbt.value / 100).toFixed(2)} °C
+                    </strong>
+                    {ptEntry.bbt.time ? ` (${ptEntry.bbt.time})` : ""}
+                    {ptEntry.bbt.excluded ? " • (Hariç Tutuldu)" : ""}
+                  </span>
+                  {ptEntry.bleeding && (
+                    <span>🩸 {STRINGS.bleeding[ptEntry.bleeding]}</span>
+                  )}
+                  {mucusStr && <span>💧 {mucusStr}</span>}
+                </div>
+                {ptEntry.bbt.disturbances &&
+                  ptEntry.bbt.disturbances.length > 0 && (
+                    <p
+                      style={{
+                        marginTop: "6px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      Bozucu:{" "}
+                      {ptEntry.bbt.disturbances
+                        .map((d) => STRINGS.disturbances[d])
+                        .join(", ")}
+                    </p>
+                  )}
+                {ptEntry.note && (
+                  <p
+                    style={{
+                      marginTop: "6px",
+                      color: "var(--text-secondary)",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    “{ptEntry.note}”
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Sensiplan Chart Legend */}
           <div

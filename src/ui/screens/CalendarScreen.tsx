@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import {
   entriesMapSignal,
   evaluationSignal,
+  getLocalTodayISO,
   selectedDateSignal,
 } from "../../app/state";
 import {
@@ -11,6 +12,7 @@ import {
   isoToDayIndex,
   parseISODate,
 } from "../../core/date";
+import { deriveMucusCategory } from "../../core/sensiplan/mucus";
 import { BleedingIntensity, ISODate } from "../../core/types";
 
 const WEEKDAYS = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
@@ -23,12 +25,23 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
   const selectedDate = selectedDateSignal.value;
   const entriesMap = entriesMapSignal.value;
   const evaluation = evaluationSignal.value;
+  const realToday = getLocalTodayISO();
+  const todayYear = Number(realToday.slice(0, 4));
+  const todayMonth = Number(realToday.slice(5, 7));
 
   const currentYear = Number(selectedDate.slice(0, 4));
   const currentMonth = Number(selectedDate.slice(5, 7));
 
   const [viewYear, setViewYear] = useState<number>(currentYear);
   const [viewMonth, setViewMonth] = useState<number>(currentMonth);
+
+  const isViewingTodayMonth = viewYear === todayYear && viewMonth === todayMonth;
+
+  const handleJumpToday = () => {
+    setViewYear(todayYear);
+    setViewMonth(todayMonth);
+    selectedDateSignal.value = realToday;
+  };
 
   const handlePrevMonth = () => {
     if (viewMonth === 1) {
@@ -93,6 +106,11 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
   }
 
   const pred = evaluation.prediction;
+  const infertileStartDate =
+    evaluation.sensiplan?.doubleCheck.infertilePhaseStartDate;
+  const infertileEndDate = pred
+    ? addDays(pred.nextPeriodStartDate, -1)
+    : undefined;
 
   return (
     <div
@@ -115,6 +133,7 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
         <button
           type="button"
           onClick={handlePrevMonth}
+          aria-label="Önceki Ay"
           style={{
             background: "none",
             border: "none",
@@ -126,18 +145,38 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
         >
           ‹
         </button>
-        <h2
-          style={{
-            fontSize: "18px",
-            fontWeight: "700",
-            color: "var(--text-primary)",
-          }}
-        >
-          {viewYear} / {String(viewMonth).padStart(2, "0")}
-        </h2>
+        <div style={{ textAlign: "center" }}>
+          <h2
+            style={{
+              fontSize: "18px",
+              fontWeight: "700",
+              color: "var(--text-primary)",
+            }}
+          >
+            {viewYear} / {String(viewMonth).padStart(2, "0")}
+          </h2>
+          {!isViewingTodayMonth && (
+            <button
+              type="button"
+              onClick={handleJumpToday}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--accent-primary)",
+                fontSize: "11px",
+                fontWeight: "600",
+                cursor: "pointer",
+                marginTop: "2px",
+              }}
+            >
+              Bugüne Dön
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleNextMonth}
+          aria-label="Sonraki Ay"
           style={{
             background: "none",
             border: "none",
@@ -181,6 +220,7 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
         {calendarCells.map((cell) => {
           const entry = entriesMap.get(cell.date);
           const isSelected = cell.date === selectedDate;
+          const isToday = cell.date === realToday;
 
           const isBleeding =
             entry?.bleeding && entry.bleeding !== ("none" as BleedingIntensity);
@@ -190,7 +230,23 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
             compareISODate(cell.date, pred.windowStartDate) >= 0 &&
             compareISODate(cell.date, pred.windowEndDate) <= 0;
 
+          const isConfirmedInfertile =
+            Boolean(
+              infertileStartDate &&
+                infertileEndDate &&
+                compareISODate(cell.date, infertileStartDate) >= 0 &&
+                compareISODate(cell.date, infertileEndDate) <= 0,
+            );
+
           const isOvulationDay = pred?.estimatedOvulationDate === cell.date;
+          const mucusCat = entry?.mucus
+            ? deriveMucusCategory(entry.mucus.sensation, entry.mucus.appearance)
+            : undefined;
+          const hasFertileMucus = mucusCat === "S" || mucusCat === "S_plus";
+          const hasSymptomOrNote = Boolean(
+            (entry?.symptoms && entry.symptoms.length > 0) ||
+              (entry?.note && entry.note.trim().length > 0),
+          );
 
           let cellBg = "var(--bg-surface)";
           let cellBorder = "1px solid var(--border-subtle)";
@@ -205,16 +261,24 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
           } else if (isPredictedPeriod) {
             cellBg = "rgba(224, 109, 122, 0.08)";
             cellBorder = "1px dashed var(--accent-primary)";
+          } else if (isConfirmedInfertile) {
+            cellBg = "var(--fertile-surface)";
+            cellBorder = "1px solid rgba(47, 179, 128, 0.45)";
+          }
+
+          if (isToday && !isSelected) {
+            cellBorder = "1.5px solid var(--accent-primary)";
           }
 
           if (isSelected) {
-            cellBorder = "2px solid #ffffff";
+            cellBorder = "2px solid var(--text-primary)";
           }
 
           return (
             <button
               key={cell.date}
               type="button"
+              aria-label={`${cell.date}${isToday ? " (Bugün)" : ""}`}
               onClick={() => {
                 selectedDateSignal.value = cell.date;
                 onOpenDayEditor(cell.date);
@@ -238,7 +302,7 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
               <span
                 style={{
                   fontSize: "13px",
-                  fontWeight: cell.isCurrentMonth ? "600" : "400",
+                  fontWeight: isToday || cell.isCurrentMonth ? "700" : "400",
                 }}
               >
                 {cell.dayNumber}
@@ -263,6 +327,16 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
                     }}
                   />
                 )}
+                {hasFertileMucus && (
+                  <span
+                    style={{
+                      width: "4px",
+                      height: "4px",
+                      borderRadius: "50%",
+                      backgroundColor: "#ec4899",
+                    }}
+                  />
+                )}
                 {isOvulationDay && (
                   <span
                     style={{
@@ -270,6 +344,16 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
                       height: "4px",
                       borderRadius: "50%",
                       backgroundColor: "#5ea2ef",
+                    }}
+                  />
+                )}
+                {hasSymptomOrNote && (
+                  <span
+                    style={{
+                      width: "4px",
+                      height: "4px",
+                      borderRadius: "50%",
+                      backgroundColor: "var(--text-secondary)",
                     }}
                   />
                 )}
@@ -318,6 +402,18 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <span
             style={{
+              width: "12px",
+              height: "12px",
+              backgroundColor: "var(--fertile-surface)",
+              border: "1px solid rgba(47, 179, 128, 0.45)",
+              borderRadius: "2px",
+            }}
+          />
+          <span>Sensiplan Kısır Dönem</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span
+            style={{
               width: "6px",
               height: "6px",
               backgroundColor: "var(--fertile-color)",
@@ -325,6 +421,28 @@ export function CalendarScreen({ onOpenDayEditor }: CalendarScreenProps) {
             }}
           />
           <span>BBT Ölçümü</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              backgroundColor: "#ec4899",
+              borderRadius: "50%",
+            }}
+          />
+          <span>Doğurgan Mukus (S/S+)</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              backgroundColor: "#5ea2ef",
+              borderRadius: "50%",
+            }}
+          />
+          <span>Tahmini Ovülasyon</span>
         </div>
       </div>
     </div>

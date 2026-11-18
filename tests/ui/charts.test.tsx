@@ -125,13 +125,13 @@ describe("Grafik Bileşenleri Test Paketi (charts)", () => {
     expect(container.textContent).toContain("Normal Luteal: 10–16 gün");
   });
 
-  it("SymptomPhaseChart: Belirtileri döngü evrelerine (Adet, Foliküler, PMS) göre gruplamalıdır", () => {
+  it("SymptomPhaseChart: Belirtileri döngü evrelerine (Adet, Foliküler, PMS) göre Türkçe etiketlerle gruplamalıdır", () => {
     render(
       <SymptomPhaseChart cycles={mockCycles} entries={mockEntries} />,
       container,
     );
 
-    expect(container.textContent).toContain("cramps");
+    expect(container.textContent).toContain("Kramplar / Kasık Ağrısı");
     expect(container.textContent).toContain("Adet");
     expect(container.textContent).toContain("Luteal");
   });
@@ -145,7 +145,7 @@ describe("Grafik Bileşenleri Test Paketi (charts)", () => {
     expect(container.textContent).toContain("Termal değişim");
   });
 
-  it("MultiCycleOverlayChart: Son döngülerin ateş eğrilerini üst üste bindirmelidir", () => {
+  it("MultiCycleOverlayChart: Son döngülerin ateş eğrilerini üst üste bindirmelidir ve nokta tıklandığında detay göstermelidir", async () => {
     render(
       <MultiCycleOverlayChart cycles={mockCycles} entries={mockEntries} />,
       container,
@@ -154,5 +154,16 @@ describe("Grafik Bileşenleri Test Paketi (charts)", () => {
     expect(container.querySelector("svg")).not.toBeNull();
     expect(container.textContent).toContain("Tipik Ovülasyon");
     expect(container.textContent).toContain("1. Döngü");
+
+    const pointBtn = container.querySelector('circle[role="button"]');
+    expect(pointBtn).not.toBeNull();
+    pointBtn!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const inspector = container.querySelector(
+      '[data-testid="overlay-point-inspector"]',
+    );
+    expect(inspector).not.toBeNull();
+    expect(inspector?.textContent).toContain("°C");
   });
 });

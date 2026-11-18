@@ -1,11 +1,14 @@
-import { useState } from "preact/hooks";
+import { signal } from "@preact/signals";
+
+export const pwaNeedRefreshSignal = signal<boolean>(false);
 
 export function PwaPrompt() {
-  const [needRefresh, setNeedRefresh] = useState(false);
+  const needRefresh = pwaNeedRefreshSignal.value;
 
-  // Expose hook or listener if service worker registration sends update event
   return needRefresh ? (
     <div
+      role="status"
+      aria-live="polite"
       style={{
         position: "fixed",
         bottom: "80px",
@@ -44,7 +47,10 @@ export function PwaPrompt() {
         </button>
         <button
           type="button"
-          onClick={() => setNeedRefresh(false)}
+          aria-label="Kapat"
+          onClick={() => {
+            pwaNeedRefreshSignal.value = false;
+          }}
           style={{
             background: "none",
             color: "var(--text-muted)",

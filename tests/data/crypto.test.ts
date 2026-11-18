@@ -33,17 +33,24 @@ describe("Kriptografi ve Kasa Güvenliği (crypto.ts)", () => {
     const dek = await generateDek();
 
     // DEK'i parola ile sarmala
-    const { envelope } = await createKeyEnvelope(password, dek);
+    const { envelope, rawDek } = await createKeyEnvelope(password, dek);
     expect(envelope.iterations).toBe(600000);
     expect(envelope.wrappedDek).toBeDefined();
+    expect(rawDek.extractable).toBe(false);
 
     // Doğru parola ile çöz
     const unwrappedDek = await unwrapDekFromEnvelope(password, envelope);
     expect(unwrappedDek).toBeDefined();
+    expect(unwrappedDek.extractable).toBe(false);
 
     // Yanlış parola ile açmayı dene -> HATA fırlatmalıdır
     await expect(
       unwrapDekFromEnvelope("YanlisParola!", envelope),
+    ).rejects.toThrow();
+
+    // İterasyon düşürme (downgrade) saldırısı reddedilmelidir
+    await expect(
+      unwrapDekFromEnvelope(password, { ...envelope, iterations: 100 }),
     ).rejects.toThrow();
   });
 

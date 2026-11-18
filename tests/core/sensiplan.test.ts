@@ -142,6 +142,25 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(res.isConfirmed).toBe(true);
       expect(res.coverline).toBe(3655); // 37.50 dışlandı!
     });
+
+    it("Ölçümler arasında çok haftalık takvim boşluğu varsa yapay sıcaklık sıçraması onaylanmamalıdır", () => {
+      const entries: DayEntry[] = [
+        makeDay("2026-05-01", 36.4),
+        makeDay("2026-05-02", 36.42),
+        makeDay("2026-05-03", 36.45),
+        makeDay("2026-05-04", 36.43),
+        makeDay("2026-05-05", 36.41),
+        makeDay("2026-05-06", 36.45),
+        // 19 günlük ölçüm boşluğu
+        makeDay("2026-05-25", 36.65),
+        makeDay("2026-05-26", 36.7),
+        makeDay("2026-05-27", 36.8),
+      ];
+
+      const res = evaluateTemperatureShift(entries);
+      expect(res.isConfirmed).toBe(false);
+      expect(res.appliedRule).toBe("NONE");
+    });
   });
 
   describe("Mukus Kuralları [M1, M2]", () => {
@@ -191,6 +210,46 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(res.isConfirmed).toBe(true);
       expect(res.peakDayDate).toBe("2026-05-12"); // S+ olan gün seçildi
       expect(res.evaluationCompleteDate).toBe("2026-05-15");
+    });
+
+    it("[M2] Zirve sonrası günlerde takvim boşluğu (eksik kayıt) varsa kuruma onaylanmamalıdır", () => {
+      const entries: DayEntry[] = [
+        makeDay("2026-05-01", undefined, false, "moist", "creamy"),
+        makeDay("2026-05-02", undefined, false, "wet", "stretchy"), // S+
+        // 3 ve 4 Mayıs kayıt yok!
+        makeDay("2026-05-05", undefined, false, "dry", "none"),
+        makeDay("2026-05-06", undefined, false, "dry", "none"),
+        makeDay("2026-05-07", undefined, false, "dry", "none"),
+      ];
+
+      const res = evaluateMucusPeak(entries);
+      expect(res.isConfirmed).toBe(false);
+    });
+
+    it("[M2] İlk zirve kapandıktan sonra tekrar S/S+ mukus görülürse önceki onay düşmeli ve yeni dalganın 3 gün kuruması beklenmelidir", () => {
+      const entriesOngoing: DayEntry[] = [
+        makeDay("2026-05-02", undefined, false, "wet", "stretchy"), // İlk S+
+        makeDay("2026-05-03", undefined, false, "moist", "thick"),
+        makeDay("2026-05-04", undefined, false, "dry", "none"),
+        makeDay("2026-05-05", undefined, false, "dry", "none"),
+        // 9 Mayıs'ta yeni doğurgan mukus dalgası
+        makeDay("2026-05-09", undefined, false, "wet", "clear"), // S
+      ];
+
+      const resPending = evaluateMucusPeak(entriesOngoing);
+      expect(resPending.isConfirmed).toBe(false);
+
+      const entriesCompleted: DayEntry[] = [
+        ...entriesOngoing,
+        makeDay("2026-05-10", undefined, false, "moist", "creamy"),
+        makeDay("2026-05-11", undefined, false, "dry", "none"),
+        makeDay("2026-05-12", undefined, false, "dry", "none"),
+      ];
+
+      const resConfirmed = evaluateMucusPeak(entriesCompleted);
+      expect(resConfirmed.isConfirmed).toBe(true);
+      expect(resConfirmed.peakDayDate).toBe("2026-05-09");
+      expect(resConfirmed.evaluationCompleteDate).toBe("2026-05-12");
     });
   });
 
@@ -272,6 +331,51 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(res.isPreOvulatoryInfertile).toBe(false);
       expect(res.appliedRule).toBe("E4_MUCUS_OVERRIDE");
     });
+
+    it("[E2] 12+ döngüde Eksi-8 kuralı en erken 1HM - 8 hesaplamalıdır; önceki döngü anovülatuar ise engellenmelidir", () => {
+      const firstHighDays = [15, 14, 16, 15, 13, 14, 15, 16, 14, 15, 13, 14]; // min = 13 -> 13 - 8 = 5
+      const resValid = evaluatePreOvulatoryPhase(5, undefined, {
+        completedCycles: [],
+        pastFirstHighDays: firstHighDays,
+        previousCycleWasOvulatory: true,
+      });
+      expect(resValid.isPreOvulatoryInfertile).toBe(true);
+      expect(resValid.lastInfertileCycleDay).toBe(5);
+      expect(resValid.appliedRule).toBe("E2_MINUS_8");
+
+      const resAnovulatory = evaluatePreOvulatoryPhase(3, undefined, {
+        completedCycles: [],
+        pastFirstHighDays: firstHighDays,
+        previousCycleWasOvulatory: false,
+      });
+      expect(resAnovulatory.isPreOvulatoryInfertile).toBe(false);
+      expect(resAnovulatory.appliedRule).toBe("NONE");
+    });
+
+    it("[E3] 12+ döngüde Eksi-20 kuralı uygulanmalı ve en kısa <= 20 ise 0 kısır gün vermelidir", () => {
+      const makeCycles = (len: number) =>
+        Array.from({ length: 12 }, (_, idx) => ({
+          id: idx + 1,
+          startDate: "2025-01-01" as ISODate,
+          length: idx === 5 ? len : 28,
+          isOutlier: false,
+        }));
+
+      const res26 = evaluatePreOvulatoryPhase(6, undefined, {
+        completedCycles: makeCycles(26),
+        previousCycleWasOvulatory: true,
+      });
+      expect(res26.appliedRule).toBe("E3_MINUS_20");
+      expect(res26.lastInfertileCycleDay).toBe(6);
+      expect(res26.isPreOvulatoryInfertile).toBe(true);
+
+      const res20 = evaluatePreOvulatoryPhase(1, undefined, {
+        completedCycles: makeCycles(20),
+        previousCycleWasOvulatory: true,
+      });
+      expect(res20.lastInfertileCycleDay).toBe(0);
+      expect(res20.isPreOvulatoryInfertile).toBe(false);
+    });
   });
 
   describe("evaluateCycleState Birleşik Entegrasyonu", () => {
@@ -328,6 +432,24 @@ describe("Sensiplan Semptotermal Kurallar Motoru (sensiplan)", () => {
       expect(pastEval.currentCycleDay).toBe(1);
       expect(pastEval.sensiplan?.temperature.isConfirmed).toBe(true);
       expect(pastEval.sensiplan?.temperature.firstHighDayDate).toBe("2026-05-07");
+    });
+
+    it("Yalnızca kanama içeren (ovülasyonu doğrulanmamış) önceki döngü yeni döngüde E1 5 gün kısır dönemi açmamalıdır", () => {
+      const entries: DayEntry[] = [
+        makeDay("2026-05-01", undefined, false, undefined, undefined, "heavy"),
+        makeDay("2026-05-02", undefined, false, undefined, undefined, "medium"),
+        makeDay("2026-05-29", undefined, false, undefined, undefined, "heavy"),
+      ];
+
+      // 2. döngünün 2. günü (30 Mayıs) -> önceki döngüde BBT/mukus doğrulaması YOK!
+      const evalDay2 = evaluateCycleState(entries, parseISODate("2026-05-30"), {
+        trackingMode: "symptothermal",
+      });
+
+      expect(evalDay2.sensiplan?.preOvulatory.isPreOvulatoryInfertile).toBe(
+        false,
+      );
+      expect(evalDay2.sensiplan?.overallFertilityState).toBe("fertile");
     });
   });
 });

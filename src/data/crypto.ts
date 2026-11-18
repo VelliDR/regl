@@ -76,11 +76,21 @@ export async function createKeyEnvelope(
     rawDekBuffer,
   );
 
+  // Import a non-extractable runtime DEK handle and wipe raw key bytes from RAM
+  const nonExtractableDek = await crypto.subtle.importKey(
+    "raw",
+    rawDekBuffer,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt", "decrypt"],
+  );
+  new Uint8Array(rawDekBuffer).fill(0);
+
   // Verifier
   const verifierIv = crypto.getRandomValues(new Uint8Array(12));
   const verifierBuffer = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: verifierIv },
-    dek,
+    nonExtractableDek,
     new TextEncoder().encode(VERIFIER_PLAINTEXT),
   );
 
@@ -93,7 +103,7 @@ export async function createKeyEnvelope(
     verifierCiphertext: bufferToBase64(new Uint8Array(verifierBuffer)),
   };
 
-  return { envelope, rawDek: dek };
+  return { envelope, rawDek: nonExtractableDek };
 }
 
 /**
@@ -104,6 +114,10 @@ export async function unwrapDekFromEnvelope(
   passphrase: string,
   envelope: WrappedKeyEnvelope,
 ): Promise<CryptoKey> {
+  if (!Number.isFinite(envelope.iterations) || envelope.iterations < 100000) {
+    throw new Error("Geçersiz anahtar zarfı iterasyon sayısı.");
+  }
+
   const salt = base64ToBuffer(envelope.salt);
   const kek = await deriveKekFromPassphrase(
     passphrase,
@@ -129,6 +143,7 @@ export async function unwrapDekFromEnvelope(
     false, // Once unwrapped in RAM, non-extractable!
     ["encrypt", "decrypt"],
   );
+  new Uint8Array(rawDekBuffer).fill(0);
 
   // Verify against verifier ciphertext
   try {

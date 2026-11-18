@@ -1,7 +1,8 @@
 import { Cycle } from "../../../core/cycles";
-import { evaluateCycleState } from "../../../core/evaluate";
-import { addDays, daysBetween } from "../../../core/date";
-import { DayEntry, ISODate } from "../../../core/types";
+import { getCycleEntries } from "../../../core/evaluate";
+import { evaluateTemperatureShift } from "../../../core/sensiplan/temperature";
+import { compareISODate, daysBetween } from "../../../core/date";
+import { DayEntry } from "../../../core/types";
 
 interface ThermalShiftChartProps {
   readonly cycles: readonly Cycle[];
@@ -9,29 +10,23 @@ interface ThermalShiftChartProps {
 }
 
 export function ThermalShiftChart({ cycles, entries }: ThermalShiftChartProps) {
-  const entriesMap = new Map<ISODate, DayEntry>();
-  for (const e of entries) {
-    entriesMap.set(e.date, e);
-  }
+  const sortedEntries = [...entries].sort((a, b) =>
+    compareISODate(a.date, b.date),
+  );
 
   // Find all cycles with confirmed Sensiplan temperature shift
   const preTemps: number[] = [];
   const postTemps: number[] = [];
 
   for (const cycle of cycles) {
-    const cycleEval = evaluateCycleState(entries, cycle.startDate, {
-      trackingMode: "symptothermal",
-    });
-    const shift = cycleEval.sensiplan?.temperature;
-    if (!shift || !shift.firstHighDayDate) continue;
+    const cycleEntries = getCycleEntries(sortedEntries, cycle);
+    const shift = evaluateTemperatureShift(cycleEntries);
+    if (!shift.isConfirmed || !shift.firstHighDayDate) continue;
 
     const shiftDay = daysBetween(cycle.startDate, shift.firstHighDayDate) + 1;
-    const cycleLen = cycle.length ?? 28;
-    for (let d = 1; d <= cycleLen; d++) {
-      const curDate = addDays(cycle.startDate, d - 1);
-      const entry = entriesMap.get(curDate);
-      if (!entry?.bbt?.value || entry.bbt.excluded) continue;
-
+    for (const entry of cycleEntries) {
+      if (!entry.bbt?.value || entry.bbt.excluded) continue;
+      const d = daysBetween(cycle.startDate, entry.date) + 1;
       if (d < shiftDay) {
         preTemps.push(entry.bbt.value);
       } else {

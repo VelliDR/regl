@@ -2,10 +2,29 @@ import { openDB, DBSchema, IDBPDatabase } from "idb";
 import { DayEntry, ISODate } from "../core/types";
 import { ValidatedUserSettings } from "./schemas";
 
+export interface EncryptedDayRecord {
+  readonly date: ISODate;
+  readonly __enc: 1;
+  readonly iv: string;
+  readonly ciphertext: string;
+}
+
+export function isEncryptedDayRecord(
+  record: unknown,
+): record is EncryptedDayRecord {
+  return (
+    typeof record === "object" &&
+    record !== null &&
+    (record as Partial<EncryptedDayRecord>).__enc === 1 &&
+    typeof (record as Partial<EncryptedDayRecord>).iv === "string" &&
+    typeof (record as Partial<EncryptedDayRecord>).ciphertext === "string"
+  );
+}
+
 export interface ReglDBSchema extends DBSchema {
   days: {
     key: ISODate;
-    value: DayEntry;
+    value: DayEntry | EncryptedDayRecord;
   };
   settings: {
     key: string;

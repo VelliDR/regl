@@ -49,10 +49,22 @@ export function evaluatePreOvulatoryPhase(
   if (mucusEntry) {
     return {
       isPreOvulatoryInfertile: false,
-      lastInfertileCycleDay: Math.max(1, cycleDay - 1),
+      lastInfertileCycleDay: Math.max(0, cycleDay - 1),
       appliedRule: "E4_MUCUS_OVERRIDE",
       explanation:
         "Acil kural (E4): Mukus veya nemlilik hissi başladığı için pre-ovülatuar kısır dönem derhal sonlanmıştır.",
+    };
+  }
+
+  // If the immediately preceding cycle was explicitly NOT confirmed ovulatory,
+  // Sensiplan requires treating the entire pre-ovulatory phase as fertile [X1].
+  if (history.previousCycleWasOvulatory === false) {
+    return {
+      isPreOvulatoryInfertile: false,
+      lastInfertileCycleDay: 0,
+      appliedRule: "NONE",
+      explanation:
+        "Önceki döngüde ovülasyon doğrulanmadığı için pre-ovülatuar kısır dönem uygulanamaz (güvenli varsayılan [X1]).",
     };
   }
 
@@ -65,7 +77,7 @@ export function evaluatePreOvulatoryPhase(
   // [E2] Minus-8 Rule (Requires at least 12 cycles with confirmed 1HM)
   if (history.pastFirstHighDays && history.pastFirstHighDays.length >= 12) {
     const earliest1HM = Math.min(...history.pastFirstHighDays.slice(-12));
-    calculatedLastDay = Math.max(1, earliest1HM - 8);
+    calculatedLastDay = Math.max(0, earliest1HM - 8);
     rule = "E2_MINUS_8";
     explanation = `Eksi-8 Kuralı (E2): Son 12 döngüdeki en erken 1. yüksek sıcaklık (${earliest1HM}. gün) - 8 = ${calculatedLastDay}. gün son kısır gün.`;
   }
@@ -78,7 +90,7 @@ export function evaluatePreOvulatoryPhase(
 
     if (validLengths.length >= 12) {
       const shortest = Math.min(...validLengths);
-      calculatedLastDay = Math.max(1, shortest - 20);
+      calculatedLastDay = Math.max(0, shortest - 20);
       rule = "E3_MINUS_20";
       explanation = `Eksi-20 Kuralı (E3): Son 12 döngünün en kısası (${shortest} gün) - 20 = ${calculatedLastDay}. gün son kısır gün.`;
     }

@@ -1,3 +1,4 @@
+import { useState } from "preact/hooks";
 import { addDays } from "../../../core/date";
 import { Cycle } from "../../../core/cycles";
 import { DayEntry, ISODate } from "../../../core/types";
@@ -13,6 +14,14 @@ export function MultiCycleOverlayChart({
   cycles,
   entries,
 }: MultiCycleOverlayChartProps) {
+  const [selectedPoint, setSelectedPoint] = useState<{
+    readonly cycleId: number;
+    readonly day: number;
+    readonly temp: number;
+    readonly excluded: boolean;
+    readonly color: string;
+  } | null>(null);
+
   const entriesMap = new Map<ISODate, DayEntry>();
   for (const e of entries) {
     entriesMap.set(e.date, e);
@@ -40,7 +49,10 @@ export function MultiCycleOverlayChart({
     );
   }
 
-  const maxDays = 32;
+  const maxDays = Math.min(
+    60,
+    Math.max(32, ...recentCycles.map((c) => c.length ?? 30)),
+  );
   const svgWidth = 480;
   const svgHeight = 220;
   const padLeft = 40;
@@ -51,8 +63,29 @@ export function MultiCycleOverlayChart({
   const plotW = svgWidth - padLeft - padRight;
   const plotH = svgHeight - padTop - padBottom;
 
-  const minTemp = 3610; // 36.10 °C
-  const maxTemp = 3730; // 37.30 °C
+  // Gather all temps across recent cycles for dynamic Y bounds
+  const allCycleTemps: number[] = [];
+  for (const cycle of recentCycles) {
+    const cycleLen = Math.min(maxDays, cycle.length ?? 35);
+    for (let d = 1; d <= cycleLen; d++) {
+      const e = entriesMap.get(addDays(cycle.startDate, d - 1));
+      if (e?.bbt?.value) allCycleTemps.push(e.bbt.value);
+    }
+  }
+
+  const minTemp =
+    allCycleTemps.length > 0
+      ? Math.min(3610, Math.floor((Math.min(...allCycleTemps) - 10) / 20) * 20)
+      : 3610;
+  const maxTemp =
+    allCycleTemps.length > 0
+      ? Math.max(3730, Math.ceil((Math.max(...allCycleTemps) + 10) / 20) * 20)
+      : 3730;
+
+  const tempTicks: number[] = [];
+  for (let t = Math.ceil(minTemp / 20) * 20; t <= maxTemp; t += 20) {
+    if (t > minTemp && t < maxTemp) tempTicks.push(t);
+  }
 
   const getY = (val: number) => {
     const clamped = Math.max(minTemp, Math.min(maxTemp, val));
@@ -139,7 +172,7 @@ export function MultiCycleOverlayChart({
           </text>
 
           {/* Grid lines and Y labels */}
-          {[3620, 3640, 3660, 3680, 3700, 3720].map((t) => {
+          {tempTicks.map((t) => {
             const y = getY(t);
             return (
               <g key={t}>
@@ -167,7 +200,9 @@ export function MultiCycleOverlayChart({
           })}
 
           {/* X axis day ticks */}
-          {[1, 5, 10, 14, 18, 22, 28, 32].map((day) => {
+          {[1, 5, 10, 14, 18, 22, 28, 32, 36, 42, 48, 56]
+            .filter((d) => d <= maxDays)
+            .map((day) => {
             const x = getX(day);
             return (
               <g key={day}>
@@ -208,10 +243,51 @@ export function MultiCycleOverlayChart({
                 />
               )}
               {s.points.map((p) => (
-                <circle key={p.day} cx={p.x} cy={p.y} r="3" fill={s.color} />
+                <circle
+                  key={p.day}
+                  cx={p.x}
+                  cy={p.y}
+                  r={
+                    selectedPoint?.cycleId === s.cycle.id &&
+                    selectedPoint?.day === p.day
+                      ? 5.5
+                      : 3.5
+                  }
+                  fill={s.color}
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${s.cycle.id}. Döngü Gün ${p.day} ${(p.temp / 100).toFixed(2)} °C`}
+                  style={{ cursor: "pointer" }}
+                  onClick={() =>
+                    setSelectedPoint({
+                      cycleId: s.cycle.id,
+                      day: p.day,
+                      temp: p.temp,
+                      excluded: false,
+                      color: s.color,
+                    })
+                  }
+                />
               ))}
               {s.excludedPoints.map((p) => (
-                <g key={`exc-${p.day}`}>
+                <g
+                  key={`exc-${p.day}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${s.cycle.id}. Döngü Gün ${p.day} ${(p.temp / 100).toFixed(2)} °C (Hariç)`}
+                  style={{ cursor: "pointer" }}
+                  onClick={() =>
+                    setSelectedPoint({
+                      cycleId: s.cycle.id,
+                      day: p.day,
+                      temp: p.temp,
+                      excluded: true,
+                      color: s.color,
+                    })
+                  }
+                >
                   <circle
                     cx={p.x}
                     cy={p.y}
@@ -235,6 +311,44 @@ export function MultiCycleOverlayChart({
           ))}
         </svg>
       </div>
+
+      {selectedPoint && (
+        <div
+          data-testid="overlay-point-inspector"
+          style={{
+            marginTop: "8px",
+            padding: "8px 12px",
+            backgroundColor: "var(--bg-elevated)",
+            border: `1px solid ${selectedPoint.color}`,
+            borderRadius: "var(--radius-sm)",
+            fontSize: "12px",
+            color: "var(--text-primary)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>
+            <strong>{selectedPoint.cycleId}. Döngü</strong> • Gün{" "}
+            {selectedPoint.day} •{" "}
+            <strong>{(selectedPoint.temp / 100).toFixed(2)} °C</strong>
+            {selectedPoint.excluded ? " (Hariç Tutuldu)" : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedPoint(null)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Cycle Legend */}
       <div

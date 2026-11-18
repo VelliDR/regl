@@ -11,6 +11,7 @@ import sys
 import os
 import io
 import json
+import re
 import sqlite3
 import zipfile
 from datetime import datetime, timedelta
@@ -150,24 +151,34 @@ def convert_pc_to_regl(pc_path: str, output_json_path: str):
                 if sextimes and sextimes > 0:
                     entry["sex"] = "unprotected"
 
-                # Symptom mapping (24: cramps, 12: headache)
+                # Symptom mapping (exact token split on #,;,\s)
                 sym_list = []
                 if symptom_str:
-                    if "24:" in symptom_str:
+                    sym_tokens = {
+                        t.split(":")[0].strip()
+                        for t in re.split(r"[#|,;\s]+", symptom_str)
+                        if t.strip()
+                    }
+                    if "24" in sym_tokens:
                         sym_list.append("cramps")
-                    if "12:" in symptom_str:
+                    if "12" in sym_tokens:
                         sym_list.append("headache")
                 if sym_list:
                     entry["symptoms"] = sym_list
 
-                # Mood mapping (10: anxious, 31: tired, 7: angry)
+                # Mood mapping (exact token split on #,;,\s)
                 mood_list = []
                 if mood_str:
-                    if "10" in mood_str:
+                    mood_tokens = {
+                        t.split(":")[0].strip()
+                        for t in re.split(r"[#|,;\s]+", mood_str)
+                        if t.strip()
+                    }
+                    if "10" in mood_tokens:
                         mood_list.append("anxious")
-                    if "31" in mood_str:
+                    if "31" in mood_tokens:
                         mood_list.append("tired")
-                    if "7" in mood_str:
+                    if "7" in mood_tokens:
                         mood_list.append("angry")
                 if mood_list:
                     entry["mood"] = mood_list

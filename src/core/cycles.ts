@@ -52,12 +52,13 @@ export function partitionCycles(
     return { completedCycles: [], allCycles: [] };
   }
 
-  // Sort entries chronologically
-  const sorted = [...entries].sort((a, b) => compareISODate(a.date, b.date));
+  // Sort entries chronologically and deduplicate by date (keeping the latest entry)
+  const rawSorted = [...entries].sort((a, b) => compareISODate(a.date, b.date));
   const entryMap = new Map<ISODate, DayEntry>();
-  for (const e of sorted) {
+  for (const e of rawSorted) {
     entryMap.set(e.date, e);
   }
+  const sorted = Array.from(entryMap.values());
 
   const cycleStartDates: ISODate[] = [];
 
@@ -87,15 +88,14 @@ export function partitionCycles(
     // Physiological constraint: a new menstrual cycle cannot naturally start < 14 days
     // after the previous one unless explicitly overridden.
     if (daysSinceLastStart >= 14) {
-      // Check if there was a gap of at least 2 non-bleeding days before this day
+      // Require a gap of at least 2 consecutive non-bleeding days before this day
       const dayMinus1 = entryMap.get(addDays(current.date, -1));
       const dayMinus2 = entryMap.get(addDays(current.date, -2));
 
       const hasBleedingMinus1 = isSignificantBleeding(dayMinus1?.bleeding);
       const hasBleedingMinus2 = isSignificantBleeding(dayMinus2?.bleeding);
 
-      // If preceding days were not significant bleeding, this marks the start of a new period
-      if (!hasBleedingMinus1 || !hasBleedingMinus2) {
+      if (!hasBleedingMinus1 && !hasBleedingMinus2) {
         cycleStartDates.push(current.date);
       }
     }
@@ -126,11 +126,17 @@ export function partitionCycles(
     }
   }
 
-  // Calculate outlier thresholds based on median of completed cycles
+  // Calculate robust outlier threshold based on median of normal-range completed cycles
+  // (avoids a single very long missing-data cycle inflating its own median threshold)
   const completedLengths = rawCycles
     .filter((c) => c.length !== undefined)
     .map((c) => c.length!);
-  const medianLength = calculateMedian(completedLengths);
+  const normalRangeLengths = completedLengths.filter(
+    (len) => len >= 18 && len <= 60,
+  );
+  const medianLength = calculateMedian(
+    normalRangeLengths.length > 0 ? normalRangeLengths : completedLengths,
+  );
 
   const completedCycles: Cycle[] = [];
   let activeCycle: Cycle | undefined;
@@ -158,10 +164,7 @@ export function partitionCycles(
     if (c.length !== undefined) {
       if (c.length < 18) {
         isOutlier = true;
-      } else if (
-        medianLength > 0 &&
-        c.length > Math.max(55, 2 * medianLength)
-      ) {
+      } else if (medianLength > 0 && c.length > 2 * medianLength) {
         isOutlier = true;
       }
     }

@@ -106,8 +106,11 @@ export function dayIndexToISO(idx: DayIndex): ISODate {
  * Adds an integer number of days to an ISODate.
  */
 export function addDays(iso: ISODate, days: number): ISODate {
+  if (!Number.isFinite(days)) {
+    throw new Error(`Invalid days offset: ${days}`);
+  }
   const currentIdx = isoToDayIndex(iso);
-  const targetIdx = (currentIdx + days) as DayIndex;
+  const targetIdx = (currentIdx + Math.round(days)) as DayIndex;
   return dayIndexToISO(targetIdx);
 }
 

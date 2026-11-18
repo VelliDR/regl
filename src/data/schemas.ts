@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { parseISODate } from "../core/date";
 
 export const BleedingSchema = v.picklist([
   "spotting",
@@ -47,7 +48,18 @@ export const CervixRecordSchema = v.object({
 });
 
 export const DayEntrySchema = v.object({
-  date: v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/)),
+  date: v.pipe(
+    v.string(),
+    v.regex(/^\d{4}-\d{2}-\d{2}$/),
+    v.check((val) => {
+      try {
+        parseISODate(val);
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Geçersiz takvim tarihi."),
+  ),
   bleeding: v.optional(BleedingSchema),
   cycleStartOverride: v.optional(v.boolean()),
   bbt: v.optional(BbtRecordSchema),
@@ -62,16 +74,31 @@ export const DayEntrySchema = v.object({
 
 export const UserSettingsSchema = v.object({
   trackingMode: v.picklist(["basic", "symptothermal"]),
-  defaultCycleLength: v.number(),
+  goal: v.optional(
+    v.picklist(["avoid_pregnancy", "conceive", "track_only"]),
+  ),
+  defaultCycleLength: v.pipe(
+    v.number(),
+    v.integer(),
+    v.minValue(15),
+    v.maxValue(60),
+  ),
   theme: v.picklist(["auto", "dark", "light"]),
   reminderBbtEnabled: v.boolean(),
   reminderBbtTime: v.string(), // '07:00'
-  reminderPeriodDaysBefore: v.number(), // 2
+  reminderPeriodDaysBefore: v.pipe(
+    v.number(),
+    v.integer(),
+    v.minValue(0),
+    v.maxValue(14),
+  ), // 2
   lastBackupDate: v.optional(v.string()),
   onboardingCompleted: v.optional(v.boolean()),
   lockEnabled: v.optional(v.boolean()),
   lockEnvelopeJson: v.optional(v.string()),
-  lockAutoMinutes: v.optional(v.number()),
+  lockAutoMinutes: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(60)),
+  ),
 });
 
 export const BackupPayloadSchema = v.object({
@@ -81,6 +108,28 @@ export const BackupPayloadSchema = v.object({
   settings: v.optional(UserSettingsSchema),
 });
 
+export const EncryptedPayloadSchema = v.object({
+  iv: v.string(),
+  ciphertext: v.string(),
+});
+
+export const WrappedKeyEnvelopeSchema = v.object({
+  salt: v.string(),
+  iterations: v.pipe(v.number(), v.integer(), v.minValue(100000)),
+  iv: v.string(),
+  wrappedDek: v.string(),
+  verifierIv: v.string(),
+  verifierCiphertext: v.string(),
+});
+
+export const EncryptedVaultSchema = v.object({
+  format: v.literal("regl-vault-v1"),
+  exportedAt: v.string(),
+  envelope: WrappedKeyEnvelopeSchema,
+  encryptedPayload: EncryptedPayloadSchema,
+});
+
 export type ValidatedDayEntry = v.InferOutput<typeof DayEntrySchema>;
 export type ValidatedUserSettings = v.InferOutput<typeof UserSettingsSchema>;
 export type ValidatedBackupPayload = v.InferOutput<typeof BackupPayloadSchema>;
+export type ValidatedEncryptedVault = v.InferOutput<typeof EncryptedVaultSchema>;

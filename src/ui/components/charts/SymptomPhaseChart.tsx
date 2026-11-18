@@ -1,6 +1,7 @@
 import { daysBetween } from "../../../core/date";
 import { Cycle } from "../../../core/cycles";
 import { DayEntry } from "../../../core/types";
+import { STRINGS } from "../../strings.tr";
 
 interface SymptomPhaseChartProps {
   readonly cycles: readonly Cycle[];
@@ -86,7 +87,9 @@ export function SymptomPhaseChart({ cycles, entries }: SymptomPhaseChartProps) {
         {topSymptoms.map(([sym, stats]) => {
           const pctM = Math.round((stats.menstrual / stats.total) * 100);
           const pctF = Math.round((stats.follicular / stats.total) * 100);
-          const pctL = Math.round((stats.luteal / stats.total) * 100);
+          const pctL = Math.max(0, 100 - pctM - pctF);
+          const symLabel =
+            STRINGS.symptoms[sym as keyof typeof STRINGS.symptoms] ?? sym;
 
           // Find dominant phase
           let dominantLabel = "Döngü Boyu";
@@ -105,7 +108,9 @@ export function SymptomPhaseChart({ cycles, entries }: SymptomPhaseChartProps) {
                   marginBottom: "4px",
                 }}
               >
-                <strong style={{ color: "var(--text-primary)" }}>{sym}</strong>
+                <strong style={{ color: "var(--text-primary)" }}>
+                  {symLabel}
+                </strong>
                 <span
                   style={{ fontSize: "11px", color: "var(--text-secondary)" }}
                 >

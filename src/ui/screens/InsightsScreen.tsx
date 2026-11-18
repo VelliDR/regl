@@ -1,14 +1,19 @@
 import {
   entriesSignal,
   evaluationSignal,
+  getLocalTodayISO,
   settingsSignal,
 } from "../../app/state";
 import { calculateMedian } from "../../core/cycles";
+import { evaluateTemperatureShift } from "../../core/sensiplan/temperature";
+import { deriveMucusCategory } from "../../core/sensiplan/mucus";
+import { getCycleEntries } from "../../core/evaluate";
 import { BleedingFlowChart } from "../components/charts/BleedingFlowChart";
 import { CycleTrendChart } from "../components/charts/CycleTrendChart";
 import { PhaseDurationChart } from "../components/charts/PhaseDurationChart";
 import { SymptomPhaseChart } from "../components/charts/SymptomPhaseChart";
 import { ThermalShiftChart } from "../components/charts/ThermalShiftChart";
+import { STRINGS } from "../strings.tr";
 
 export function InsightsScreen() {
   const evaluation = evaluationSignal.value;
@@ -59,6 +64,10 @@ export function InsightsScreen() {
     .slice(0, 8);
 
   const isSympto = settings.trackingMode === "symptothermal";
+  const sortedEntriesDesc = [...entries].sort((a, b) =>
+    b.date.localeCompare(a.date),
+  );
+  const recentReportEntries = sortedEntriesDesc.slice(0, 30);
 
   return (
     <div
@@ -69,16 +78,47 @@ export function InsightsScreen() {
         paddingBottom: "90px",
       }}
     >
-      <h2
+      <div
         style={{
-          fontSize: "20px",
-          fontWeight: "800",
-          color: "var(--text-primary)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "12px",
           marginBottom: "16px",
+          flexWrap: "wrap",
         }}
       >
-        📊 İçgörüler ve İstatistikler
-      </h2>
+        <h2
+          style={{
+            fontSize: "20px",
+            fontWeight: "800",
+            color: "var(--text-primary)",
+          }}
+        >
+          📊 İçgörüler ve İstatistikler
+        </h2>
+        <button
+          type="button"
+          className="no-print"
+          onClick={() => {
+            if (typeof window !== "undefined" && typeof window.print === "function") {
+              window.print();
+            }
+          }}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "var(--bg-surface)",
+            color: "var(--text-primary)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "var(--radius-sm)",
+            fontSize: "12px",
+            fontWeight: "700",
+            cursor: "pointer",
+          }}
+        >
+          🖨️ Hekim Raporu Yazdır / PDF
+        </button>
+      </div>
 
       {/* 1. Overview Metric Cards */}
       <div
@@ -415,12 +455,159 @@ export function InsightsScreen() {
                   color: "var(--text-primary)",
                 }}
               >
-                {sym} ({count} kez)
+                {STRINGS.symptoms[sym as keyof typeof STRINGS.symptoms] ?? sym} ({count} kez)
               </span>
             ))}
           </div>
         </section>
       )}
+
+      {/* 9. Printable Clinical Summary (Visible on Print / PDF) */}
+      <section
+        className="print-only"
+        data-testid="physician-print-report"
+        style={{
+          marginTop: "20px",
+          padding: "16px",
+          border: "1px solid #d1d5db",
+          borderRadius: "8px",
+          fontSize: "11px",
+          color: "#111827",
+        }}
+      >
+        <h3 style={{ fontSize: "15px", fontWeight: "700", marginBottom: "4px" }}>
+          Hekim Muayene Özeti — Döngü ve Semptotermal Rapor
+        </h3>
+        <p style={{ marginBottom: "12px", color: "#374151" }}>
+          Rapor Tarihi: {getLocalTodayISO()} • Mod:{" "}
+          {isSympto ? "Semptotermal (Sensiplan)" : "Temel"} • Amaç:{" "}
+          {STRINGS.goals[settings.goal ?? "track_only"]}
+        </p>
+
+        {allCycles.length > 0 && (
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              marginBottom: "14px",
+              fontSize: "10px",
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: "1px solid #9ca3af", textAlign: "left" }}>
+                <th style={{ padding: "4px" }}>Döngü</th>
+                <th style={{ padding: "4px" }}>Başlangıç</th>
+                <th style={{ padding: "4px" }}>Bitiş</th>
+                <th style={{ padding: "4px" }}>Süre</th>
+                <th style={{ padding: "4px" }}>Kanama</th>
+                <th style={{ padding: "4px" }}>BBT Sıçraması / Kaplama</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allCycles.slice(-12).map((c) => {
+                const cEntries = getCycleEntries(entries, c);
+                const tempShift = evaluateTemperatureShift(cEntries);
+                return (
+                  <tr
+                    key={c.id}
+                    style={{ borderBottom: "1px solid #e5e7eb" }}
+                  >
+                    <td style={{ padding: "4px" }}>#{c.id}</td>
+                    <td style={{ padding: "4px" }}>{c.startDate}</td>
+                    <td style={{ padding: "4px" }}>{c.endDate ?? "Devam"}</td>
+                    <td style={{ padding: "4px" }}>
+                      {c.length !== undefined ? `${c.length} g` : "—"}
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      {c.periodLength !== undefined
+                        ? `${c.periodLength} g`
+                        : "—"}
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      {tempShift.isConfirmed && tempShift.coverline
+                        ? `${tempShift.firstHighDayDate ?? "?"} (${(tempShift.coverline / 100).toFixed(2)} °C)`
+                        : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+
+        {recentReportEntries.length > 0 && (
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "10px",
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: "1px solid #9ca3af", textAlign: "left" }}>
+                <th style={{ padding: "4px" }}>Tarih</th>
+                <th style={{ padding: "4px" }}>Kanama</th>
+                <th style={{ padding: "4px" }}>BBT</th>
+                <th style={{ padding: "4px" }}>Mukus</th>
+                <th style={{ padding: "4px" }}>Serviks</th>
+                <th style={{ padding: "4px" }}>Belirtiler</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentReportEntries.map((e) => {
+                const mCat = e.mucus
+                  ? deriveMucusCategory(e.mucus.sensation, e.mucus.appearance)
+                  : "—";
+                const cParts = e.cervix
+                  ? [
+                      e.cervix.position
+                        ? STRINGS.cervixPosition[e.cervix.position]
+                        : "",
+                      e.cervix.firmness
+                        ? STRINGS.cervixFirmness[e.cervix.firmness]
+                        : "",
+                      e.cervix.opening
+                        ? STRINGS.cervixOpening[e.cervix.opening]
+                        : "",
+                    ].filter(Boolean)
+                  : [];
+                return (
+                  <tr
+                    key={e.date}
+                    style={{ borderBottom: "1px solid #e5e7eb" }}
+                  >
+                    <td style={{ padding: "4px" }}>{e.date}</td>
+                    <td style={{ padding: "4px" }}>
+                      {e.bleeding ? STRINGS.bleeding[e.bleeding] : "—"}
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      {e.bbt
+                        ? `${(e.bbt.value / 100).toFixed(2)} °C${e.bbt.excluded ? " (H)" : ""}`
+                        : "—"}
+                    </td>
+                    <td style={{ padding: "4px" }}>{mCat}</td>
+                    <td style={{ padding: "4px" }}>
+                      {cParts.length > 0 ? cParts.join(", ") : "—"}
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      {e.symptoms && e.symptoms.length > 0
+                        ? e.symptoms
+                            .map(
+                              (s) =>
+                                STRINGS.symptoms[
+                                  s as keyof typeof STRINGS.symptoms
+                                ] ?? s,
+                            )
+                            .join(", ")
+                        : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
     </div>
   );
 }

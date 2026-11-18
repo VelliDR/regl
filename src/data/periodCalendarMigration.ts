@@ -10,6 +10,7 @@ import {
 export interface ZipEntryInfo {
   readonly name: string;
   readonly method: number; // 0 = stored, 8 = deflate
+  readonly encrypted: boolean;
   readonly compSize: number;
   readonly uncompSize: number;
   readonly dataOffset: number;
@@ -208,6 +209,7 @@ export function parseZipCentralDirectory(
     if (pos + 46 > zipBytes.length) break;
     if (view.getUint32(pos, true) !== 0x02014b50) break;
 
+    const flags = view.getUint16(pos + 8, true);
     const method = view.getUint16(pos + 10, true);
     const compSize = view.getUint32(pos + 20, true);
     const uncompSize = view.getUint32(pos + 24, true);
@@ -226,6 +228,7 @@ export function parseZipCentralDirectory(
       files.set(name, {
         name,
         method,
+        encrypted: (flags & 0x01) !== 0,
         compSize,
         uncompSize,
         dataOffset,
@@ -251,6 +254,12 @@ export async function extractZipFile(
   if (!entry) {
     throw new Error(
       `ZIP arşivi içinde aranan dosya bulunamadı: ${targetFilename}`,
+    );
+  }
+
+  if (entry.encrypted) {
+    throw new Error(
+      "Şifreli ZIP / Period Calendar yedeği desteklenmiyor. Lütfen uygulamanızdan parolasız bir yedek alın.",
     );
   }
 
@@ -456,6 +465,11 @@ export function readTableRows(
 
   const rawPageSize = (dbBytes[16]! << 8) | dbBytes[17]!;
   const pageSize = rawPageSize === 1 ? 65536 : rawPageSize || 4096;
+  const reservedBytes = dbBytes[20] ?? 0;
+  const usableSize = Math.max(480, pageSize - reservedBytes);
+  const maxLocal = usableSize - 35;
+  const minLocal = Math.floor(((usableSize - 12) * 32) / 255) - 23;
+
   const rows: SqliteRow[] = [];
   const visited = new Set<number>();
 
@@ -464,6 +478,63 @@ export function readTableRows(
     dbBytes.byteOffset,
     dbBytes.byteLength,
   );
+
+  function extractCellPayload(
+    payloadStart: number,
+    payloadLen: number,
+  ): Uint8Array {
+    if (payloadLen <= maxLocal) {
+      const payloadEnd = Math.min(dbBytes.length, payloadStart + payloadLen);
+      return dbBytes.subarray(payloadStart, payloadEnd);
+    }
+
+    // SQLite 3 overflow page assembly for large records (notes / User JSON)
+    const ovDataCap = usableSize - 4;
+    const surplus = minLocal + ((payloadLen - minLocal) % ovDataCap);
+    const localLen = surplus <= maxLocal ? surplus : minLocal;
+    const assembled = new Uint8Array(payloadLen);
+
+    let copied = Math.min(
+      localLen,
+      Math.max(0, dbBytes.length - payloadStart),
+    );
+    if (copied > 0) {
+      assembled.set(dbBytes.subarray(payloadStart, payloadStart + copied), 0);
+    }
+
+    let nextOvPage =
+      payloadStart + localLen + 4 <= dbBytes.length
+        ? view.getUint32(payloadStart + localLen, false)
+        : 0;
+
+    const visitedOv = new Set<number>();
+    while (
+      nextOvPage > 0 &&
+      copied < payloadLen &&
+      !visitedOv.has(nextOvPage)
+    ) {
+      visitedOv.add(nextOvPage);
+      const ovOffset = (nextOvPage - 1) * pageSize;
+      if (ovOffset + 4 > dbBytes.length) break;
+
+      const nextPage = view.getUint32(ovOffset, false);
+      const toCopy = Math.min(
+        payloadLen - copied,
+        ovDataCap,
+        Math.max(0, dbBytes.length - (ovOffset + 4)),
+      );
+      if (toCopy <= 0) break;
+
+      assembled.set(
+        dbBytes.subarray(ovOffset + 4, ovOffset + 4 + toCopy),
+        copied,
+      );
+      copied += toCopy;
+      nextOvPage = nextPage;
+    }
+
+    return assembled.subarray(0, copied);
+  }
 
   function visitPage(pageNum: number) {
     if (pageNum <= 0 || visited.has(pageNum)) return;
@@ -494,9 +565,7 @@ export function readTableRows(
           cellOffset + pLenBytes,
         );
         const payloadStart = cellOffset + pLenBytes + rowidBytes;
-        const payloadEnd = Math.min(dbBytes.length, payloadStart + payloadLen);
-
-        const payload = dbBytes.subarray(payloadStart, payloadEnd);
+        const payload = extractCellPayload(payloadStart, payloadLen);
         const record = parseSqliteRecord(payload);
         rows.push({ rowid, record });
       }
@@ -594,7 +663,10 @@ export async function convertPeriodCalendarToRegl(
                 item.key === "period_length" &&
                 typeof item.value === "number"
               ) {
-                defaultCycle = item.value;
+                defaultCycle = Math.min(
+                  60,
+                  Math.max(15, Math.round(item.value)),
+                );
               }
             }
           }
@@ -695,21 +767,41 @@ export async function convertPeriodCalendarToRegl(
         entry.sex = "unprotected";
       }
 
-      // Symptom mapping (24: cramps, 12: headache)
-      const symList: string[] = [];
-      if (symptomStr.includes("24:")) symList.push("cramps");
-      if (symptomStr.includes("12:")) symList.push("headache");
-      if (symList.length > 0) {
-        entry.symptoms = symList;
+      // Exact token-based symptom mapping (avoids substring collisions like "124:" or "112:")
+      const PC_SYMPTOM_MAP: Record<string, string> = {
+        "24": "cramps",
+        "12": "headache",
+      };
+      const symTokens = symptomStr
+        .split(/[#|,;\s]+/)
+        .map((t) => t.split(":")[0]?.trim() ?? "")
+        .filter(Boolean);
+      const symSet = new Set<string>();
+      for (const id of symTokens) {
+        const mapped = PC_SYMPTOM_MAP[id];
+        if (mapped) symSet.add(mapped);
+      }
+      if (symSet.size > 0) {
+        entry.symptoms = Array.from(symSet);
       }
 
-      // Mood mapping (10: anxious, 31: tired, 7: angry)
-      const moodList: string[] = [];
-      if (moodStr.includes("10")) moodList.push("anxious");
-      if (moodStr.includes("31")) moodList.push("tired");
-      if (moodStr.includes("7")) moodList.push("angry");
-      if (moodList.length > 0) {
-        entry.mood = moodList;
+      // Exact token-based mood mapping (avoids substring collisions like "17" matching "7")
+      const PC_MOOD_MAP: Record<string, string> = {
+        "10": "anxious",
+        "31": "tired",
+        "7": "angry",
+      };
+      const moodTokens = moodStr
+        .split(/[#|,;\s]+/)
+        .map((t) => t.split(":")[0]?.trim() ?? "")
+        .filter(Boolean);
+      const moodSet = new Set<string>();
+      for (const id of moodTokens) {
+        const mapped = PC_MOOD_MAP[id];
+        if (mapped) moodSet.add(mapped);
+      }
+      if (moodSet.size > 0) {
+        entry.mood = Array.from(moodSet);
       }
 
       entry.updatedAt = Math.max(entry.updatedAt, updateTime);

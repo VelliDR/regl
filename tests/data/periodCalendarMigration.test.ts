@@ -233,5 +233,246 @@ describe("Period Calendar Migration Motoru - 6. Aşama: Uçtan Uca Entegrasyon v
   });
 });
 
+describe("Sentetik CI Göç Testleri: Java Stream + ZIP + SQLite Overflow + Token Eşleme", () => {
+  function encodeVarint(n: number): number[] {
+    if (n < 0x80) return [n];
+    if (n < 0x4000) return [0x80 | (n >> 7), n & 0x7f];
+    return [0x80 | (n >> 14), 0x80 | ((n >> 7) & 0x7f), n & 0x7f];
+  }
+
+  function buildRecord(
+    fields: Array<null | number | string>,
+  ): Uint8Array {
+    const encoder = new TextEncoder();
+    const serialTypes: number[] = [];
+    const bodyChunks: Uint8Array[] = [];
+
+    for (const f of fields) {
+      if (f === null) {
+        serialTypes.push(0);
+      } else if (typeof f === "number") {
+        serialTypes.push(4); // int32
+        const b = new Uint8Array(4);
+        new DataView(b.buffer).setInt32(0, f, false);
+        bodyChunks.push(b);
+      } else {
+        const bytes = encoder.encode(f);
+        serialTypes.push(13 + 2 * bytes.length);
+        bodyChunks.push(bytes);
+      }
+    }
+
+    const stBytes: number[] = [];
+    for (const st of serialTypes) stBytes.push(...encodeVarint(st));
+
+    // headerLen includes its own varint size (1 byte for small headers)
+    let headerLen = 1 + stBytes.length;
+    if (headerLen >= 128) headerLen += 1;
+    const header = new Uint8Array([...encodeVarint(headerLen), ...stBytes]);
+
+    const bodyLen = bodyChunks.reduce((acc, c) => acc + c.length, 0);
+    const out = new Uint8Array(header.length + bodyLen);
+    out.set(header, 0);
+    let pos = header.length;
+    for (const c of bodyChunks) {
+      out.set(c, pos);
+      pos += c.length;
+    }
+    return out;
+  }
+
+  function writeLeafPage(
+    db: Uint8Array,
+    pageNum: number,
+    pageSize: number,
+    cells: Array<{ rowid: number; payload: Uint8Array; overflowPage?: number; localLen?: number }>,
+  ) {
+    const pageOffset = (pageNum - 1) * pageSize;
+    const headerOffset = pageOffset + (pageNum === 1 ? 100 : 0);
+    const view = new DataView(db.buffer);
+
+    db[headerOffset] = 0x0d; // Leaf table B-tree page
+    view.setUint16(headerOffset + 3, cells.length, false);
+
+    let cellWriteCursor = pageOffset + pageSize;
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i]!;
+      const lenBytes = encodeVarint(c.payload.length);
+      const idBytes = encodeVarint(c.rowid);
+      const storedBytes = c.localLen !== undefined ? c.payload.subarray(0, c.localLen) : c.payload;
+      const totalCellSize =
+        lenBytes.length +
+        idBytes.length +
+        storedBytes.length +
+        (c.overflowPage ? 4 : 0);
+      cellWriteCursor -= totalCellSize;
+
+      let p = cellWriteCursor;
+      db.set(lenBytes, p);
+      p += lenBytes.length;
+      db.set(idBytes, p);
+      p += idBytes.length;
+      db.set(storedBytes, p);
+      p += storedBytes.length;
+      if (c.overflowPage) {
+        view.setUint32(p, c.overflowPage, false);
+      }
+
+      // Pointer array starts at headerOffset + 8
+      view.setUint16(headerOffset + 8 + i * 2, cellWriteCursor - pageOffset, false);
+    }
+  }
+
+  function wrapInStoredZip(filename: string, data: Uint8Array): Uint8Array {
+    const nameBytes = new TextEncoder().encode(filename);
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(localHeader.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(8, 0, true); // stored
+    lv.setUint32(18, data.length, true);
+    lv.setUint32(22, data.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    localHeader.set(nameBytes, 30);
+
+    const cdHeader = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(cdHeader.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(10, 0, true); // stored
+    cv.setUint32(20, data.length, true);
+    cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, 0, true); // local header offset
+    cdHeader.set(nameBytes, 46);
+
+    const cdOffset = localHeader.length + data.length;
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, 1, true);
+    ev.setUint16(10, 1, true);
+    ev.setUint32(12, cdHeader.length, true);
+    ev.setUint32(16, cdOffset, true);
+
+    const zip = new Uint8Array(cdOffset + cdHeader.length + eocd.length);
+    zip.set(localHeader, 0);
+    zip.set(data, localHeader.length);
+    zip.set(cdHeader, cdOffset);
+    zip.set(eocd, cdOffset + cdHeader.length);
+    return zip;
+  }
+
+  function wrapInJavaObjectStream(payload: Uint8Array): Uint8Array {
+    // 0xaced 0x0005 + TC_BLOCKDATALONG (0x7a) + 4-byte length + payload
+    const out = new Uint8Array(9 + payload.length);
+    out[0] = 0xac;
+    out[1] = 0xed;
+    out[2] = 0x00;
+    out[3] = 0x05;
+    out[4] = 0x7a;
+    new DataView(out.buffer).setUint32(5, payload.length, false);
+    out.set(payload, 9);
+    return out;
+  }
+
+  it("Sentetik JavaStream + ZIP + SQLite Overflow sayfası ve exact token ayrıştırma CI ortamında eksiksiz çalışmalıdır", async () => {
+    const { convertPeriodCalendarToRegl } = await import(
+      "../../src/data/periodCalendarMigration"
+    );
+
+    const pageSize = 512;
+    const db = new Uint8Array(pageSize * 5); // 5 pages
+    db.set(new TextEncoder().encode("SQLite format 3\x00"), 0);
+    const dv = new DataView(db.buffer);
+    dv.setUint16(16, pageSize, false);
+    db[20] = 0; // reserved bytes
+
+    // Page 1: sqlite_master
+    writeLeafPage(db, 1, pageSize, [
+      {
+        rowid: 1,
+        payload: buildRecord(["table", "User", "User", 2, "CREATE TABLE User"]),
+      },
+      {
+        rowid: 2,
+        payload: buildRecord(["table", "Period", "Period", 3, "CREATE TABLE Period"]),
+      },
+      {
+        rowid: 3,
+        payload: buildRecord(["table", "Note", "Note", 4, "CREATE TABLE Note"]),
+      },
+    ]);
+
+    // Page 2: User settings (period_length = 30)
+    writeLeafPage(db, 2, pageSize, [
+      {
+        rowid: 1,
+        payload: buildRecord([
+          1,
+          null,
+          null,
+          null,
+          JSON.stringify({ g: [{ key: "period_length", value: 30 }] }),
+        ]),
+      },
+    ]);
+
+    // Page 3: Period (2026-08-01, 3 days)
+    writeLeafPage(db, 3, pageSize, [
+      { rowid: 1, payload: buildRecord([1, null, null, null, 20260801, 3, 30]) },
+    ]);
+
+    // Page 4 & 5: Note with > 477 bytes triggering SQLite overflow page 5
+    // Also includes "112:1#24:2#" and "17,10," to verify no substring collisions ("12" / "7")
+    const longNote = "Uzun gunluk notu ".repeat(38); // ~646 chars -> forces overflow!
+    const notePayload = buildRecord([
+      1,
+      20260802,
+      null,
+      1785600000000,
+      null,
+      null,
+      null,
+      null,
+      "112:1#24:2#", // only 24 (cramps), NOT 12 (headache)
+      "17,10,", // only 10 (anxious), NOT 7 (angry)
+      longNote,
+      null,
+      null,
+      null,
+      1,
+    ]);
+
+    // For pageSize=512: usableSize=512, maxLocal=477, minLocal=37, ovDataCap=508
+    const minLocal = Math.floor(((pageSize - 12) * 32) / 255) - 23;
+    const surplus = minLocal + ((notePayload.length - minLocal) % (pageSize - 4));
+    const localLen = surplus <= pageSize - 35 ? surplus : minLocal;
+
+    writeLeafPage(db, 4, pageSize, [
+      { rowid: 1, payload: notePayload, localLen, overflowPage: 5 },
+    ]);
+
+    // Page 5: Overflow page (4-byte next=0 + remaining bytes)
+    const ovOffset = 4 * pageSize;
+    dv.setUint32(ovOffset, 0, false);
+    db.set(notePayload.subarray(localLen), ovOffset + 4);
+
+    const zipBytes = wrapInStoredZip("cloud.db", db);
+    const pcBytes = wrapInJavaObjectStream(zipBytes);
+
+    const result = await convertPeriodCalendarToRegl(pcBytes);
+    expect(result.settings?.defaultCycleLength).toBe(30);
+    expect(result.days.length).toBe(3);
+
+    const aug2 = result.days.find((d) => d.date === "2026-08-02");
+    expect(aug2).toBeDefined();
+    expect(aug2?.bleeding).toBe("medium");
+    expect(aug2?.symptoms).toEqual(["cramps"]);
+    expect(aug2?.mood).toEqual(["anxious"]);
+    expect(aug2?.sex).toBe("unprotected");
+    expect(aug2?.note).toBe(longNote.trim());
+  });
+});
+
 
 

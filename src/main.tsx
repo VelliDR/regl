@@ -1,14 +1,15 @@
 import { render } from "preact";
 import { App } from "./ui/App";
+import { pwaNeedRefreshSignal } from "./ui/components/PwaPrompt";
 import "./ui/tokens.css";
 
-// PWA otomatik güncelleme: Yeni sürüm hazır olduğunda sayfayı otomatik olarak yeniler
+// PWA güncellemesi: Kullanıcı form doldururken ani sayfa yenileme ile veri kaybını önlemek
+// için yeni Service Worker devraldığında kontrollü yenileme banner'ı gösterilir.
 if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-  let refreshing = false;
+  const hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
+    if (hadController) {
+      pwaNeedRefreshSignal.value = true;
     }
   });
 }

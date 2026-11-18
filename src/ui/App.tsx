@@ -3,10 +3,14 @@ import {
   entriesSignal,
   getLocalTodayISO,
   initializeAppState,
+  isAutoLockSuspended,
   isInitializedSignal,
   isLockedSignal,
+  lockApp,
+  resumeAutoLockAfterExternalPicker,
   selectedDateSignal,
   settingsSignal,
+  unlockApp,
 } from "../app/state";
 import { BottomNav, ScreenTab } from "./components/BottomNav";
 import { PwaPrompt } from "./components/PwaPrompt";
@@ -46,6 +50,29 @@ export function App() {
   useEffect(() => {
     initializeAppState();
   }, []);
+
+  // Apply configured theme ("auto" | "dark" | "light") to root element
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.setAttribute("data-theme", settings.theme);
+
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      const isLight =
+        settings.theme === "light" ||
+        (settings.theme === "auto" &&
+          typeof window !== "undefined" &&
+          window.matchMedia?.("(prefers-color-scheme: light)").matches);
+      metaTheme.setAttribute("content", isLight ? "#f8f7fa" : "#1a191b");
+    }
+  }, [settings.theme]);
+
+  // Redirect off Chart tab if switched to basic tracking mode
+  useEffect(() => {
+    if (settings.trackingMode !== "symptothermal" && currentTab === "chart") {
+      setCurrentTab("today");
+    }
+  }, [settings.trackingMode, currentTab]);
 
   // --- Faz 2: Android popstate Back-Button Navigation ---
   useEffect(() => {
@@ -104,11 +131,18 @@ export function App() {
       setIsBackgrounded(isHidden);
 
       if (isHidden) {
-        // Auto-lock when backgrounded if lock is configured
-        if (settings.lockEnabled && settings.lockEnvelopeJson) {
-          isLockedSignal.value = true;
+        // Auto-lock when backgrounded if lock is configured (unless an OS file picker / share sheet is open)
+        if (
+          settings.lockEnabled &&
+          settings.lockEnvelopeJson &&
+          !isAutoLockSuspended()
+        ) {
+          lockApp();
         }
       } else {
+        if (isAutoLockSuspended()) {
+          resumeAutoLockAfterExternalPicker();
+        }
         // Re-check midnight rollover on awakening
         const currentToday = getLocalTodayISO();
         if (currentToday !== lastKnownTodayRef.current) {
@@ -125,10 +159,13 @@ export function App() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [settings.lockEnabled, settings.lockEnvelopeJson]);
 
-  // --- Faz 3: Inactivity Idle Timer (3 Minutes) ---
+  // --- Faz 3: Configurable Inactivity Idle Timer ---
   useEffect(() => {
+    const idleMinutes = settings.lockAutoMinutes ?? 3;
     const isLockActive =
-      settings.lockEnabled && Boolean(settings.lockEnvelopeJson);
+      settings.lockEnabled &&
+      Boolean(settings.lockEnvelopeJson) &&
+      idleMinutes > 0;
     if (!isLockActive || isLocked) {
       if (idleTimerRef.current) {
         window.clearTimeout(idleTimerRef.current);
@@ -143,10 +180,12 @@ export function App() {
       }
       idleTimerRef.current = window.setTimeout(
         () => {
-          isLockedSignal.value = true;
+          if (!isAutoLockSuspended()) {
+            lockApp();
+          }
         },
-        3 * 60 * 1000,
-      ); // 3 minutes idle
+        idleMinutes * 60 * 1000,
+      );
     };
 
     resetIdleTimer();
@@ -170,7 +209,12 @@ export function App() {
         window.removeEventListener(ev, resetIdleTimer),
       );
     };
-  }, [settings.lockEnabled, settings.lockEnvelopeJson, isLocked]);
+  }, [
+    settings.lockEnabled,
+    settings.lockEnvelopeJson,
+    settings.lockAutoMinutes,
+    isLocked,
+  ]);
 
   if (!isInitialized) {
     return (
@@ -197,7 +241,7 @@ export function App() {
     return (
       <LockScreen
         onUnlock={() => {
-          isLockedSignal.value = false;
+          unlockApp();
         }}
       />
     );

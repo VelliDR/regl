@@ -20,6 +20,7 @@ export const STRINGS = {
     bleeding: "Kanama Yoğunluğu",
     bbt: "Bazal Vücut Isısı (BBT)",
     mucus: "Servikal Mukus",
+    cervix: "Rahim Ağzı (Serviks)",
     disturbances: "Bozucu Etkenler",
     symptoms: "Fiziksel Belirtiler",
     mood: "Duygudurum & Enerji",
@@ -76,6 +77,28 @@ export const STRINGS = {
     sad: "Duygusal / Hüzünlü",
     tired: "Yorgun",
     energetic: "Enerjik",
+    angry: "Öfkeli / Sinirli",
+  },
+
+  cervixPosition: {
+    low: "Alçak (Kolay Ulaşılır)",
+    high: "Yüksek (Derinde)",
+  },
+
+  cervixFirmness: {
+    firm: "Sert (Burun Ucu Gibi)",
+    soft: "Yumuşak (Dudak Gibi)",
+  },
+
+  cervixOpening: {
+    closed: "Kapalı",
+    open: "Açık",
+  },
+
+  goals: {
+    track_only: "Döngü ve Sağlık Farkındalığı",
+    avoid_pregnancy: "Gebelikten Korunma (Yüksek Hassasiyet)",
+    conceive: "Gebelik Planlama (Doğurganlık Odaklı)",
   },
 
   sex: {

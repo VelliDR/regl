@@ -5,7 +5,7 @@ import { Cycle } from "../../src/core/cycles";
 import { predictNextPeriod } from "../../src/core/predict/ewma";
 import { calculateKnausOgino } from "../../src/core/predict/knaus";
 import { evaluateCycleState } from "../../src/core/evaluate";
-import { DayEntry } from "../../src/core/types";
+import { CentiCelsius, DayEntry } from "../../src/core/types";
 
 function createMockCycle(
   id: number,
@@ -185,6 +185,47 @@ describe("Tahmin ve Değerlendirme Algoritmaları (predict & evaluate)", () => {
       expect(evalState.currentCycleDay).toBe(14); // 29 Ocak'tan 11 Şubat'a 13 gün + 1 = 14
       expect(evalState.completedCycles.length).toBe(1);
       expect(evalState.prediction.estimatedCycleLength).toBe(28);
+    });
+
+    it("[P6] En az 3 döngüde BBT kayması doğrulandığında evaluateCycleState kişisel luteal ortalamasıyla ovülasyon tarihi tahmin etmelidir", () => {
+      const entries: DayEntry[] = [];
+      const startDates = ["2026-01-01", "2026-01-29", "2026-02-26"];
+      for (const s of startDates) {
+        const start = parseISODate(s);
+        entries.push({ date: start, bleeding: "heavy", updatedAt: 1 });
+        // 6 düşük (gün 9..14) + 3 yüksek (gün 15..17) -> 1HM = 15. gün, luteal = 28 - 14 = 14
+        for (let d = 8; d <= 13; d++) {
+          entries.push({
+            date: addDays(start, d),
+            bbt: { value: 3645 as CentiCelsius },
+            updatedAt: 1,
+          });
+        }
+        for (let d = 14; d <= 16; d++) {
+          entries.push({
+            date: addDays(start, d),
+            bbt: { value: (3670 + (d - 14) * 5) as CentiCelsius },
+            updatedAt: 1,
+          });
+        }
+      }
+      // 4. aktif döngü
+      entries.push({
+        date: parseISODate("2026-03-26"),
+        bleeding: "heavy",
+        updatedAt: 1,
+      });
+
+      const evalState = evaluateCycleState(
+        entries,
+        parseISODate("2026-03-30"),
+        { trackingMode: "symptothermal" },
+      );
+
+      expect(evalState.completedCycles.length).toBe(3);
+      expect(evalState.prediction.nextPeriodStartDate).toBe("2026-04-23");
+      // 2026-04-23 - 14 gün = 2026-04-09
+      expect(evalState.prediction.estimatedOvulationDate).toBe("2026-04-09");
     });
   });
 

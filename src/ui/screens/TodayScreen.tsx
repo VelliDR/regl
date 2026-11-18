@@ -3,439 +3,51 @@ import {
   dbErrorSignal,
   entriesMapSignal,
   evaluationSignal,
+  getLocalTodayISO,
   persistDayEntry,
   removeDayEntry,
   selectedDateSignal,
   settingsSignal,
 } from "../../app/state";
-import { addDays, compareISODate, daysBetween, parseISODate } from "../../core/date";
+import { addDays, daysBetween } from "../../core/date";
 import {
   BleedingIntensity,
   CentiCelsius,
+  CervixRecord,
   DayEntry,
   DisturbanceType,
-  ISODate,
   MucusAppearance,
   MucusSensation,
 } from "../../core/types";
-import { Chip } from "../components/Chip";
 import { CycleRing } from "../components/CycleRing";
+import { ActiveSheetType, TodaySheets } from "../components/TodaySheets";
+import {
+  CyclePhaseKey,
+  PHASE_GUIDE_DATA,
+  determineCyclePhase,
+} from "../phaseSchedule";
 import { STRINGS } from "../strings.tr";
 import {
   evaluateInAppNotices,
   exportCalendarEventToDevice,
 } from "../../app/reminders";
 
-import { KnausOginoResult } from "../../core/predict/knaus";
-import { SensiplanFullEvaluation } from "../../core/evaluate";
-
-type ActiveSheetType =
-  | "bleeding"
-  | "bbt"
-  | "mucus"
-  | "symptoms"
-  | "mood"
-  | "sex"
-  | "note"
-  | "phase_info"
-  | null;
-
-export type CyclePhaseKey = "menstrual" | "follicular" | "ovulation" | "luteal";
-
-export interface PhaseCalendarDates {
-  readonly startDate: ISODate;
-  readonly endDate: ISODate;
-  readonly dateRangeText: string;
-}
-
-export interface CyclePhaseSchedule {
-  readonly menstrual: PhaseCalendarDates;
-  readonly follicular: PhaseCalendarDates;
-  readonly ovulationWindow: PhaseCalendarDates;
-  readonly ovulationPeakDate: ISODate;
-  readonly ovulationPeakText: string;
-  readonly luteal: PhaseCalendarDates;
-  readonly nextPeriodDate: ISODate;
-  readonly nextPeriodText: string;
-  readonly daysUntilOvulation: number;
-}
-
-export interface CyclePhaseDetails {
-  readonly key: CyclePhaseKey;
-  readonly name: string;
-  readonly shortName: string;
-  readonly icon: string;
-  readonly color: string;
-  readonly bg: string;
-  readonly border: string;
-  readonly phaseDayText: string;
-  readonly dateRangeText: string;
-  readonly timingSummary: string;
-  readonly hormoneInfo: string;
-  readonly fertilityInfo: string;
-  readonly tips: string;
-  readonly schedule: CyclePhaseSchedule;
-}
-
-export const PHASE_GUIDE_DATA: Record<
+export {
+  PHASE_GUIDE_DATA,
+  determineCyclePhase,
+  formatDateRangeTR,
+  formatISODateTR,
+} from "../phaseSchedule";
+export type {
+  CyclePhaseDetails,
   CyclePhaseKey,
-  {
-    title: string;
-    subtitle: string;
-    icon: string;
-    color: string;
-    timing: string;
-    hormones: string;
-    body: string;
-    nutrition: string;
-    exercise: string;
-    fertility: string;
-  }
-> = {
-  menstrual: {
-    title: "Menstrüasyon (Adet) Fazı",
-    subtitle: "Döngünün 1-5. Günleri • Dinlenme ve Yenilenme",
-    icon: "🩸",
-    color: "#f43f5e",
-    timing: "Döngünün başlangıcı (yaklaşık 1-5 gün)",
-    hormones:
-      "Östrojen ve progesteron seviyeleri en düşük noktadadır. Rahim içi tabaka yenilenir.",
-    body: "Vücut enerjisi içe dönüktür. Karın ve belde hafif kramp, yorgunluk ve duygusal hassasiyet olağandır.",
-    nutrition:
-      "Demir yönünden zengin gıdalar (kırmızı et, ıspanak, mercimek), sıcak bitki çayları ve magnezyum.",
-    exercise:
-      "Hafif yürüyüş, nazik esneme ve nefes egzersizleri. Ağır antrenmanlar yerine dinlenmeye öncelik verin.",
-    fertility:
-      "Genellikle kısırdır; ancak kısa döngülü kadınlarda erken ovülasyon riski unutulmamalıdır.",
-  },
-  follicular: {
-    title: "Foliküler Faz",
-    subtitle: "Döngünün 6-12. Günleri • Zindelik ve Yükseliş",
-    icon: "🌿",
-    color: "#10b981",
-    timing: "Kanama bitiminden yumurtlama penceresine kadar",
-    hormones:
-      "FSH (Folikül Uyarıcı Hormon) yeni folikülleri olgunlaştırırken östrojen kademeli olarak yükselir.",
-    body: "Östrojen artışı mutluluk ve motivasyonu artırır; cilt parlar, enerji ve zihinsel berraklık zirveye doğru tırmanır.",
-    nutrition:
-      "Taze sebzeler, avokado, kabak çekirdeği, lifli gıdalar ve dengeli protein.",
-    exercise:
-      "Kuvvet çalışmaları, kardiyo, koşu ve yeni spor disiplinleri denemek için en uygun evre.",
-    fertility:
-      "Pre-ovülatuar dönem: İlk günlerde kısırlık devam edebilir; mukus hissi başladığı an doğurgan pencere açılır.",
-  },
-  ovulation: {
-    title: "Ovülasyon (Yumurtlama) Fazı",
-    subtitle: "Döngünün 13-16. Günleri • Zirve ve Doğurganlık",
-    icon: "🌸",
-    color: "#ec4899",
-    timing: "Döngünün ortası (yaklaşık 24-48 saatlik zirve)",
-    hormones:
-      "Östrojen tepe yapar ve LH (Lüteinleştirici Hormon) dalgası ile yumurtalıktan olgun yumurta salınır.",
-    body: "Kaygan, şeffaf, uzayan servikal mukus (yumurta akı) görülür. Libido, çekicilik hissi ve sosyal enerji en üst seviyededir.",
-    nutrition:
-      "Antioksidanlar (çilek, yaban mersini), çiğ sebzeler ve bol su.",
-    exercise:
-      "Yüksek yoğunluklu antrenman (HIIT), grup fitness seansları ve tempolu aktiviteler.",
-    fertility:
-      "Hamile kalma olasılığının en yüksek olduğu andır. Sperm rahim içinde 5 güne kadar canlı kalabilir.",
-  },
-  luteal: {
-    title: "Luteal Faz",
-    subtitle: "Döngünün 15-28. Günleri • Progesteron ve Denge",
-    icon: "🌙",
-    color: "#8b5cf6",
-    timing: "Yumurtlamadan sonraki adet gününe kadar (yaklaşık 10-16 gün)",
-    hormones:
-      "Yumurtayı bırakan folikül korpus luteum'a dönüşerek progesteron üretir. Progesteron bazal vücut ısısını 0.2 - 0.5 °C yükseltir.",
-    body: "Metabolizma hafif hızlanır. Dönem sonuna doğru hormonların düşüşüyle PMS (hassasiyet, ödem, iştah artışı) görülebilir.",
-    nutrition:
-      "Kompleks karbonhidratlar (tatlı patates, kinoa), B6 vitamini (muz, somon), magnezyum ve bol su.",
-    exercise:
-      "Pilates, orta tempolu yürüyüş, hatha yoga. Döngü sonuna yaklaştıkça yoğunluğu hafifletin.",
-    fertility:
-      "Sensiplan Çift Kontrol kuralına göre 3 gün yüksek ateş ve mukus kuruma kanıtlandığında, adet gününe kadar gebelik imkansızdır (Biyolojik Kısır).",
-  },
-};
-
-const TR_MONTHS_SHORT = [
-  "Oca", "Şub", "Mar", "Nis", "May", "Haz",
-  "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
-] as const;
-
-const TR_MONTHS_FULL = [
-  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-] as const;
-
-export function formatISODateTR(iso: ISODate, fullMonth = false): string {
-  const d = parseInt(iso.slice(8, 10), 10);
-  const m = parseInt(iso.slice(5, 7), 10) - 1;
-  const monthName = fullMonth
-    ? (TR_MONTHS_FULL[m] ?? "")
-    : (TR_MONTHS_SHORT[m] ?? "");
-  return `${d} ${monthName}`;
-}
-
-export function formatDateRangeTR(startIso: ISODate, endIso: ISODate): string {
-  const d1 = parseInt(startIso.slice(8, 10), 10);
-  const m1 = parseInt(startIso.slice(5, 7), 10) - 1;
-  const d2 = parseInt(endIso.slice(8, 10), 10);
-  const m2 = parseInt(endIso.slice(5, 7), 10) - 1;
-
-  if (m1 === m2) {
-    if (d1 === d2) {
-      return `${d1} ${TR_MONTHS_SHORT[m1] ?? ""}`;
-    }
-    return `${d1} - ${d2} ${TR_MONTHS_SHORT[m2] ?? ""}`;
-  }
-  return `${d1} ${TR_MONTHS_SHORT[m1] ?? ""} - ${d2} ${TR_MONTHS_SHORT[m2] ?? ""}`;
-}
-
-export function determineCyclePhase(params: {
-  readonly selectedDate: ISODate;
-  readonly activeCycleStartDate?: ISODate | undefined;
-  readonly currentCycleDay?: number | undefined;
-  readonly estimatedCycleLength: number;
-  readonly nextPeriodStartDate?: ISODate | undefined;
-  readonly estimatedOvulationDate?: ISODate | undefined;
-  readonly daysUntilPeriod?: number | undefined;
-  readonly bleeding?: BleedingIntensity | undefined;
-  readonly sensiplan?: SensiplanFullEvaluation | undefined;
-  readonly knausOgino: KnausOginoResult;
-  readonly lutealPhaseDays?: number | undefined;
-}): CyclePhaseDetails {
-  const {
-    selectedDate,
-    activeCycleStartDate,
-    currentCycleDay,
-    estimatedCycleLength,
-    nextPeriodStartDate,
-    estimatedOvulationDate,
-    daysUntilPeriod,
-    bleeding,
-    sensiplan,
-    knausOgino,
-    lutealPhaseDays = 14,
-  } = params;
-
-  const cycleStart: ISODate =
-    activeCycleStartDate ??
-    (currentCycleDay !== undefined
-      ? addDays(selectedDate, -(currentCycleDay - 1))
-      : selectedDate);
-
-  const cycleLen = Math.max(20, Math.round(estimatedCycleLength || 28));
-  const nextPeriod: ISODate =
-    nextPeriodStartDate ?? addDays(cycleStart, cycleLen);
-
-  const estimatedOvDay = Math.max(
-    10,
-    Math.round(cycleLen - lutealPhaseDays),
-  );
-  const fertileStartDay =
-    knausOgino.fertileWindowStartDay ?? Math.max(6, estimatedOvDay - 5);
-  const fertileEndDay =
-    knausOgino.fertileWindowEndDay ??
-    Math.min(cycleLen - 4, estimatedOvDay + 1);
-
-  // 1. Menstrual phase dates: Day 1 to Day 5
-  const menstrualStartDate = cycleStart;
-  const menstrualEndDate = addDays(cycleStart, 4);
-
-  // 2. Follicular phase dates: Day 6 to Day before fertile window
-  const follicularStartDate = addDays(cycleStart, 5);
-  const follicularEndDayNum = Math.max(5, fertileStartDay - 2);
-  const follicularEndDate = addDays(cycleStart, follicularEndDayNum);
-
-  // 3. Ovulation window dates & peak date
-  const ovWindowStartDate = addDays(cycleStart, fertileStartDay - 1);
-  const ovWindowEndDate = addDays(cycleStart, fertileEndDay - 1);
-  const ovPeakDate =
-    estimatedOvulationDate ?? addDays(cycleStart, estimatedOvDay - 1);
-
-  // 4. Luteal phase dates: Day after fertile window to day before next period
-  const lutealStartDate = addDays(cycleStart, fertileEndDay);
-  const lutealEndDate = addDays(nextPeriod, -1);
-
-  const schedule: CyclePhaseSchedule = {
-    menstrual: {
-      startDate: menstrualStartDate,
-      endDate: menstrualEndDate,
-      dateRangeText: formatDateRangeTR(menstrualStartDate, menstrualEndDate),
-    },
-    follicular: {
-      startDate: follicularStartDate,
-      endDate: follicularEndDate,
-      dateRangeText:
-        compareISODate(follicularStartDate, follicularEndDate) <= 0
-          ? formatDateRangeTR(follicularStartDate, follicularEndDate)
-          : "—",
-    },
-    ovulationWindow: {
-      startDate: ovWindowStartDate,
-      endDate: ovWindowEndDate,
-      dateRangeText: formatDateRangeTR(ovWindowStartDate, ovWindowEndDate),
-    },
-    ovulationPeakDate: ovPeakDate,
-    ovulationPeakText: formatISODateTR(ovPeakDate, true),
-    luteal: {
-      startDate: lutealStartDate,
-      endDate: lutealEndDate,
-      dateRangeText: formatDateRangeTR(lutealStartDate, lutealEndDate),
-    },
-    nextPeriodDate: nextPeriod,
-    nextPeriodText: formatISODateTR(nextPeriod, true),
-    daysUntilOvulation: daysBetween(selectedDate, ovPeakDate),
-  };
-
-  const isBleedingActive = Boolean(bleeding && bleeding !== "spotting");
-  const isPostOvulatory = Boolean(
-    sensiplan?.doubleCheck.isPostOvulatoryInfertile,
-  );
-
-  // 1. Menstrual Phase
-  if (
-    isBleedingActive ||
-    (currentCycleDay !== undefined &&
-      currentCycleDay <= 5 &&
-      !isPostOvulatory)
-  ) {
-    const dayStr =
-      currentCycleDay !== undefined
-        ? `Adetin ${currentCycleDay}. Günü`
-        : "Adet Dönemi";
-    return {
-      key: "menstrual",
-      name: "Menstrüasyon Fazı",
-      shortName: "Menstrüasyon",
-      icon: "🩸",
-      color: "#f43f5e",
-      bg: "rgba(244, 63, 94, 0.1)",
-      border: "rgba(244, 63, 94, 0.3)",
-      phaseDayText: `${dayStr} • Döngü Başlangıcı`,
-      dateRangeText: schedule.menstrual.dateRangeText,
-      timingSummary: `Foliküler faz ${formatISODateTR(schedule.follicular.startDate, true)}'de başlayacak • Beklenen ovülasyon: ${schedule.ovulationPeakText}`,
-      hormoneInfo:
-        "Östrojen ve progesteron en düşük seviyede. Rahim içi tabaka yenileniyor.",
-      fertilityInfo:
-        "Düşük hamilelik olasılığı (Erken ovülasyon istisnaları hariç).",
-      tips: "Dinlenmeye özen gösterin, magnezyum alın ve hafif yürüyüş yapın.",
-      schedule,
-    };
-  }
-
-  // 2. Luteal Phase (Post-ovulatory)
-  const isPastFertileWindow =
-    currentCycleDay !== undefined && currentCycleDay > fertileEndDay;
-  const isOvulationCompleted =
-    currentCycleDay !== undefined && currentCycleDay > estimatedOvDay + 1;
-
-  if (isPostOvulatory || isPastFertileWindow || isOvulationCompleted) {
-    const lutealDay = currentCycleDay
-      ? Math.max(1, currentCycleDay - estimatedOvDay)
-      : undefined;
-    const dayStr = lutealDay
-      ? `Luteal Fazın ${lutealDay}. Günü`
-      : "Luteal Faz";
-    const untilPeriodStr =
-      daysUntilPeriod !== undefined
-        ? ` • Adete ${Math.max(0, daysUntilPeriod)} gün`
-        : "";
-
-    let fertilityMsg =
-      "Düşük hamilelik olasılığı (Yumurtlama penceresi kapandı).";
-    if (isPostOvulatory) {
-      fertilityMsg =
-        "Biyolojik Kısır Dönem (Sensiplan kuralı ile ovülasyon kanıtlandı).";
-    }
-
-    return {
-      key: "luteal",
-      name: "Luteal Faz",
-      shortName: "Luteal",
-      icon: "🌙",
-      color: "#8b5cf6",
-      bg: "rgba(139, 92, 246, 0.1)",
-      border: "rgba(139, 92, 246, 0.3)",
-      phaseDayText: `${dayStr}${untilPeriodStr}`,
-      dateRangeText: schedule.luteal.dateRangeText,
-      timingSummary: `Ovülasyon ${schedule.ovulationPeakText}'de tamamlandı • Beklenen sonraki adet: ${schedule.nextPeriodText}`,
-      hormoneInfo:
-        "Progesteron hormonu baskın, bazal vücut ısısı yüksek seviyede. Korpus luteum aktif.",
-      fertilityInfo: fertilityMsg,
-      tips: "Metabolizma hafif hızlanır. Kafeini sınırlayın, B6 vitamini ve kaliteli uyku tercih edin.",
-      schedule,
-    };
-  }
-
-  // 3. Ovulation Phase
-  const isInFertileWindow =
-    sensiplan?.overallFertilityState === "fertile" ||
-    (currentCycleDay !== undefined &&
-      currentCycleDay >= fertileStartDay &&
-      currentCycleDay <= fertileEndDay);
-
-  if (
-    isInFertileWindow ||
-    (currentCycleDay !== undefined &&
-      Math.abs(currentCycleDay - estimatedOvDay) <= 1)
-  ) {
-    const isPeak = currentCycleDay === estimatedOvDay;
-    const dayStr = isPeak
-      ? `✨ Tahmini Yumurtlama Günü: ${schedule.ovulationPeakText} (LH Zirvesi)`
-      : currentCycleDay !== undefined
-        ? `Doğurgan Pencere (Döngü Günü ${currentCycleDay})`
-        : "Yumurtlama Fazı";
-
-    return {
-      key: "ovulation",
-      name: "Ovülasyon Fazı",
-      shortName: "Ovülasyon",
-      icon: "🌸",
-      color: "#ec4899",
-      bg: "rgba(236, 72, 153, 0.1)",
-      border: "rgba(236, 72, 153, 0.3)",
-      phaseDayText: dayStr,
-      dateRangeText: schedule.ovulationWindow.dateRangeText,
-      timingSummary: `Tahmini ovülasyon: ${schedule.ovulationPeakText} • Beklenen sonraki adet: ${schedule.nextPeriodText}`,
-      hormoneInfo:
-        "Östrojen zirvede, LH dalgası ovülasyonu tetikliyor. Enerji ve libido yüksek.",
-      fertilityInfo: "En yüksek hamilelik olasılığı (Doğurgan pencere açık).",
-      tips: "Sosyal aktiviteler, yaratıcı projeler ve tempolu egzersiz için harika bir dönem.",
-      schedule,
-    };
-  }
-
-  // 4. Follicular Phase
-  const dayStr =
-    currentCycleDay !== undefined
-      ? `Foliküler Faz (${currentCycleDay}. Gün)`
-      : "Foliküler Faz";
-  return {
-    key: "follicular",
-    name: "Foliküler Faz",
-    shortName: "Foliküler",
-    icon: "🌿",
-    color: "#10b981",
-    bg: "rgba(16, 185, 129, 0.1)",
-    border: "rgba(16, 185, 129, 0.3)",
-    phaseDayText: `${dayStr} • Enerji Artışı`,
-    dateRangeText: schedule.follicular.dateRangeText,
-    timingSummary: `Foliküler faz ${schedule.follicular.dateRangeText} arası • Beklenen ovülasyon: ${schedule.ovulationPeakText} (${schedule.daysUntilOvulation > 0 ? `${schedule.daysUntilOvulation} gün sonra` : "yakında"})`,
-    hormoneInfo:
-      "FSH yeni yumurtaları olgunlaştırıyor, östrojen kademeli yükseliyor.",
-    fertilityInfo: sensiplan?.preOvulatory.isPreOvulatoryInfertile
-      ? "Erken Kısır Dönem (Pre-ovülatuar güvenli günler)."
-      : "Doğurganlığa Geçiş (Yumurtlama yaklaşıyor).",
-    tips: "Kuvvet antrenmanları ve yeni hedeflere odaklanmak için ideal zaman.",
-    schedule,
-  };
-}
+  CyclePhaseSchedule,
+  PhaseCalendarDates,
+} from "../phaseSchedule";
 
 function isDayEntryEmpty(entry: DayEntry): boolean {
   const hasBleeding = Boolean(entry.bleeding);
-  const hasBbt = Boolean(entry.bbt && !entry.bbt.excluded);
+  const hasBbt = Boolean(entry.bbt);
   const hasMucus = Boolean(entry.mucus);
   const hasSymptoms = Boolean(entry.symptoms && entry.symptoms.length > 0);
   const hasMood = Boolean(entry.mood && entry.mood.length > 0);
@@ -496,6 +108,9 @@ export function TodayScreen() {
   const [mucusApp, setMucusApp] = useState<MucusAppearance | undefined>(
     currentEntry?.mucus?.appearance,
   );
+  const [cervix, setCervix] = useState<CervixRecord | undefined>(
+    currentEntry?.cervix,
+  );
 
   const [symptoms, setSymptoms] = useState<readonly string[]>(
     currentEntry?.symptoms ?? [],
@@ -510,14 +125,25 @@ export function TodayScreen() {
   );
 
   const noteTimerRef = useRef<number | null>(null);
+  const pendingNoteFlushRef = useRef<(() => void) | null>(null);
+
+  // Flush any pending debounced note when changing date or unmounting
+  useEffect(() => {
+    return () => {
+      if (noteTimerRef.current) {
+        window.clearTimeout(noteTimerRef.current);
+        noteTimerRef.current = null;
+      }
+      if (pendingNoteFlushRef.current) {
+        const flush = pendingNoteFlushRef.current;
+        pendingNoteFlushRef.current = null;
+        flush();
+      }
+    };
+  }, [selectedDate]);
 
   // Re-sync local state when date changes
   useEffect(() => {
-    if (noteTimerRef.current) {
-      window.clearTimeout(noteTimerRef.current);
-      noteTimerRef.current = null;
-    }
-
     const entry = entriesMap.get(selectedDate);
     setBleeding(entry?.bleeding);
     setHasBbt(entry?.bbt !== undefined);
@@ -527,6 +153,7 @@ export function TodayScreen() {
     setDisturbances(entry?.bbt?.disturbances ?? []);
     setMucusSens(entry?.mucus?.sensation);
     setMucusApp(entry?.mucus?.appearance);
+    setCervix(entry?.cervix);
     setSymptoms(entry?.symptoms ?? []);
     setMood(entry?.mood ?? []);
     setSex(entry?.sex);
@@ -568,6 +195,7 @@ export function TodayScreen() {
             },
           }
         : {}),
+      ...(cervix ? { cervix } : {}),
       ...(symptoms.length > 0 ? { symptoms } : {}),
       ...(mood.length > 0 ? { mood } : {}),
       ...(sex ? { sex } : {}),
@@ -589,8 +217,14 @@ export function TodayScreen() {
     if (noteTimerRef.current) {
       window.clearTimeout(noteTimerRef.current);
     }
-    noteTimerRef.current = window.setTimeout(() => {
+    const flushFn = () => {
       saveCurrent({ note: val.trim().length > 0 ? val.trim() : undefined });
+    };
+    pendingNoteFlushRef.current = flushFn;
+    noteTimerRef.current = window.setTimeout(() => {
+      noteTimerRef.current = null;
+      pendingNoteFlushRef.current = null;
+      flushFn();
     }, 350);
   };
 
@@ -599,6 +233,7 @@ export function TodayScreen() {
       window.clearTimeout(noteTimerRef.current);
       noteTimerRef.current = null;
     }
+    pendingNoteFlushRef.current = null;
     saveCurrent({ note: note.trim().length > 0 ? note.trim() : undefined });
   };
 
@@ -607,10 +242,16 @@ export function TodayScreen() {
       typeof window !== "undefined" &&
       window.confirm("Bu güne ait tüm kayıtları silmek istediğinizden emin misiniz?")
     ) {
+      if (noteTimerRef.current) {
+        window.clearTimeout(noteTimerRef.current);
+        noteTimerRef.current = null;
+      }
+      pendingNoteFlushRef.current = null;
       setBleeding(undefined);
       setHasBbt(false);
       setMucusSens(undefined);
       setMucusApp(undefined);
+      setCervix(undefined);
       setSymptoms([]);
       setMood([]);
       setSex(undefined);
@@ -629,11 +270,7 @@ export function TodayScreen() {
   };
 
   const handleTodayJump = () => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    selectedDateSignal.value = parseISODate(`${y}-${m}-${d}`);
+    selectedDateSignal.value = getLocalTodayISO();
   };
 
   const handleBleedingToggle = (val: BleedingIntensity) => {
@@ -642,8 +279,11 @@ export function TodayScreen() {
     saveCurrent({ bleeding: nextVal });
   };
 
+  const clampBbt = (val: number) =>
+    Math.min(41.0, Math.max(35.0, Math.round(val * 100) / 100));
+
   const handleBbtStep = (step: number) => {
-    const nextVal = Math.round((bbtValue + step) * 100) / 100;
+    const nextVal = clampBbt(bbtValue + step);
     setBbtValue(nextVal);
     setHasBbt(true);
     saveCurrent({
@@ -689,31 +329,59 @@ export function TodayScreen() {
     saveCurrent({ mood: next });
   };
 
-  const daysUntilNextPeriod = evaluation.prediction
-    ? daysBetween(selectedDate, evaluation.prediction.nextPeriodStartDate)
+  const handleCervixUpdate = (next: CervixRecord | undefined) => {
+    setCervix(next);
+    saveCurrent({ cervix: next });
+  };
+
+  const viewedCycle = evaluation.targetCycle ?? evaluation.activeCycle;
+  const isViewingCompletedPastCycle = Boolean(viewedCycle?.endDate);
+
+  const cycleNextPeriodDate = isViewingCompletedPastCycle && viewedCycle?.endDate
+    ? addDays(viewedCycle.endDate, 1)
+    : evaluation.prediction?.nextPeriodStartDate;
+
+  const viewedCycleLength =
+    isViewingCompletedPastCycle && viewedCycle?.length
+      ? viewedCycle.length
+      : evaluation.prediction.estimatedCycleLength || settings.defaultCycleLength;
+
+  const daysUntilNextPeriod = cycleNextPeriodDate
+    ? daysBetween(selectedDate, cycleNextPeriodDate)
     : undefined;
 
   const isPeriodDueToday = daysUntilNextPeriod === 0;
 
+  const derivedLutealDays =
+    !isViewingCompletedPastCycle && evaluation.prediction.estimatedOvulationDate
+      ? daysBetween(
+          evaluation.prediction.estimatedOvulationDate,
+          evaluation.prediction.nextPeriodStartDate,
+        )
+      : undefined;
+
   // Compute Clinical & Biological Cycle Phase
   const phaseDetails = determineCyclePhase({
     selectedDate,
-    activeCycleStartDate: evaluation.activeCycle?.startDate,
+    activeCycleStartDate: viewedCycle?.startDate,
     currentCycleDay: evaluation.currentCycleDay,
-    estimatedCycleLength:
-      evaluation.prediction.estimatedCycleLength || settings.defaultCycleLength,
-    nextPeriodStartDate: evaluation.prediction.nextPeriodStartDate,
-    estimatedOvulationDate: evaluation.prediction.estimatedOvulationDate,
+    estimatedCycleLength: viewedCycleLength,
+    nextPeriodStartDate: cycleNextPeriodDate,
+    estimatedOvulationDate: isViewingCompletedPastCycle
+      ? undefined
+      : evaluation.prediction.estimatedOvulationDate,
     daysUntilPeriod: daysUntilNextPeriod,
     bleeding,
     sensiplan: evaluation.sensiplan,
     knausOgino: evaluation.knausOgino,
+    lutealPhaseDays: derivedLutealDays,
   });
 
-  // Pregnancy / Fertility chance pill description
+  // Pregnancy / Fertility chance pill description adapted to user goal
   const isBleedingActive = Boolean(bleeding && bleeding !== "spotting");
   const isFertile =
     evaluation.sensiplan?.overallFertilityState === "fertile";
+  const userGoal = settings.goal ?? "track_only";
 
   let statusBadgeText = "🛡️ Düşük Hamilelik Olasılığı";
   let statusBadgeColor = "var(--text-secondary)";
@@ -724,13 +392,34 @@ export function TodayScreen() {
     statusBadgeColor = "var(--accent-primary)";
     statusBadgeBg = "var(--accent-surface)";
   } else if (isFertile) {
-    statusBadgeText = "🌱 Doğurgan Pencere (Yüksek Olasılık)";
-    statusBadgeColor = "var(--fertile-color)";
-    statusBadgeBg = "var(--fertile-surface)";
+    statusBadgeText =
+      userGoal === "avoid_pregnancy"
+        ? "⚠️ Korunma Gerekli • Doğurgan Pencere"
+        : userGoal === "conceive"
+          ? "🌟 Gebelik İçin En Verimli Pencere"
+          : "🌱 Doğurgan Pencere (Yüksek Olasılık)";
+    statusBadgeColor =
+      userGoal === "avoid_pregnancy"
+        ? "var(--accent-primary)"
+        : "var(--fertile-color)";
+    statusBadgeBg =
+      userGoal === "avoid_pregnancy"
+        ? "var(--accent-surface)"
+        : "var(--fertile-surface)";
   } else if (phaseDetails.key === "luteal") {
-    statusBadgeText = evaluation.sensiplan?.doubleCheck.isPostOvulatoryInfertile
-      ? "🛡️ Biyolojik Kısır (Luteal Faz)"
-      : "🛡️ Düşük Hamilelik Olasılığı (Luteal Faz)";
+    if (evaluation.sensiplan?.doubleCheck.isPostOvulatoryInfertile) {
+      statusBadgeText =
+        userGoal === "avoid_pregnancy"
+          ? "🛡️ Çift-Kontrol Onaylı Kısır Dönem"
+          : userGoal === "conceive"
+            ? "⏳ Luteal Bekleme (İmplantasyon Evresi)"
+            : "🛡️ Biyolojik Kısır (Luteal Faz)";
+    } else {
+      statusBadgeText =
+        userGoal === "conceive"
+          ? "⏳ Luteal Faz (Sonuç Bekleniyor)"
+          : "🛡️ Düşük Hamilelik Olasılığı (Luteal Faz)";
+    }
     statusBadgeColor = "#8b5cf6";
     statusBadgeBg = "rgba(139, 92, 246, 0.15)";
   }
@@ -750,6 +439,25 @@ export function TodayScreen() {
           mucusSens && mucusApp ? " / " : ""
         }${mucusApp ? STRINGS.mucusAppearance[mucusApp] : ""}`
       : "+ Gözlemle";
+
+  const cervixLabel = (() => {
+    if (!cervix) return "+ Gözlem Ekle";
+    const parts: string[] = [];
+    if (cervix.position) {
+      parts.push(
+        STRINGS.cervixPosition[cervix.position].split(" ")[0] ?? cervix.position,
+      );
+    }
+    if (cervix.firmness) {
+      parts.push(
+        STRINGS.cervixFirmness[cervix.firmness].split(" ")[0] ?? cervix.firmness,
+      );
+    }
+    if (cervix.opening) {
+      parts.push(STRINGS.cervixOpening[cervix.opening]);
+    }
+    return parts.length > 0 ? parts.join(" • ") : "+ Gözlem Ekle";
+  })();
 
   const symptomsLabel =
     symptoms.length > 0
@@ -872,15 +580,27 @@ export function TodayScreen() {
           </div>
         )}
 
-        {/* In-App Notices */}
-        {evaluateInAppNotices(
-          currentEntry !== undefined &&
-            (currentEntry.bleeding !== undefined ||
-              currentEntry.bbt !== undefined),
-          daysUntilNextPeriod,
-          settings.lastBackupDate,
-          entriesMap.size,
-        ).map((notice) => (
+        {/* In-App Notices (evaluated against real today, not historical date browsing) */}
+        {(() => {
+          const realToday = getLocalTodayISO();
+          const realTodayEntry = entriesMap.get(realToday);
+          const hasRealTodayLog = Boolean(
+            realTodayEntry && !isDayEntryEmpty(realTodayEntry),
+          );
+          const realDaysUntilPeriod = evaluation.prediction
+            ? daysBetween(realToday, evaluation.prediction.nextPeriodStartDate)
+            : undefined;
+          return evaluateInAppNotices(
+            hasRealTodayLog,
+            realDaysUntilPeriod,
+            settings.lastBackupDate,
+            entriesMap.size,
+            {
+              reminderBbtEnabled: settings.reminderBbtEnabled,
+              reminderPeriodDaysBefore: settings.reminderPeriodDaysBefore,
+            },
+          );
+        })().map((notice) => (
           <div
             key={notice.id}
             style={{
@@ -1372,6 +1092,42 @@ export function TodayScreen() {
             </button>
           )}
 
+          {/* Card 3b: Cervix (Symptothermal only) */}
+          {isSymptothermal && (
+            <button
+              type="button"
+              className={`glance-card ${cervix ? "has-value" : ""}`}
+              onClick={() => setActiveSheet("cervix")}
+              style={{ textAlign: "left" }}
+            >
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  fontWeight: "600",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                🌺 {STRINGS.today.cervix}
+              </span>
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: cervix ? "700" : "500",
+                  color: cervix ? "var(--text-primary)" : "var(--text-secondary)",
+                  marginTop: "6px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {cervixLabel}
+              </span>
+            </button>
+          )}
+
           {/* Card 4: Symptoms */}
           <button
             type="button"
@@ -1514,972 +1270,47 @@ export function TodayScreen() {
       </div>
 
       {/* 4. Bottom Sheet (Alt Çekmece) Quick-Log Editor */}
-      {activeSheet !== null && (
-        <div
-          className="sheet-backdrop"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setActiveSheet(null);
-            }
-          }}
-        >
-          <div className="sheet-container">
-            {/* Sheet Drag Handle */}
-            <div
-              style={{
-                width: "40px",
-                height: "4px",
-                backgroundColor: "var(--border-strong)",
-                borderRadius: "2px",
-                margin: "0 auto 12px",
-              }}
-            />
-
-            {/* Sheet Header */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "16px",
-                paddingBottom: "8px",
-                borderBottom: "1px solid var(--border-subtle)",
-              }}
-            >
-              <h3
-                style={{
-                  fontSize: "16px",
-                  fontWeight: "700",
-                  color: "var(--text-primary)",
-                }}
-              >
-                {activeSheet === "bleeding" && `🩸 ${STRINGS.today.bleeding}`}
-                {activeSheet === "bbt" && `🌡️ ${STRINGS.today.bbt}`}
-                {activeSheet === "mucus" && `💧 ${STRINGS.today.mucus}`}
-                {activeSheet === "symptoms" && `⚡ ${STRINGS.today.symptoms}`}
-                {activeSheet === "mood" && `✨ ${STRINGS.today.mood}`}
-                {activeSheet === "sex" && `❤️ ${STRINGS.today.sex}`}
-                {activeSheet === "note" && `📝 ${STRINGS.today.notes}`}
-                {activeSheet === "phase_info" && "📖 Döngü Fazları Rehberi"}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setActiveSheet(null)}
-                style={{
-                  padding: "6px 14px",
-                  backgroundColor: "var(--accent-primary)",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "var(--radius-full)",
-                  fontSize: "12px",
-                  fontWeight: "700",
-                  cursor: "pointer",
-                }}
-              >
-                Tamam ✓
-              </button>
-            </div>
-
-            {/* Sheet Content: Bleeding */}
-            {activeSheet === "bleeding" && (
-              <div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "10px",
-                  }}
-                >
-                  Bugünkü kanama şiddetini seçin:
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                  <Chip
-                    label={STRINGS.bleeding.spotting}
-                    selected={bleeding === "spotting"}
-                    onToggle={() => handleBleedingToggle("spotting")}
-                  />
-                  <Chip
-                    label={STRINGS.bleeding.light}
-                    selected={bleeding === "light"}
-                    onToggle={() => handleBleedingToggle("light")}
-                  />
-                  <Chip
-                    label={STRINGS.bleeding.medium}
-                    selected={bleeding === "medium"}
-                    onToggle={() => handleBleedingToggle("medium")}
-                  />
-                  <Chip
-                    label={STRINGS.bleeding.heavy}
-                    selected={bleeding === "heavy"}
-                    onToggle={() => handleBleedingToggle("heavy")}
-                  />
-                </div>
-
-                <div style={{ marginTop: "16px" }}>
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--text-secondary)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={cycleOverride}
-                      onChange={(e) => {
-                        const val = (e.target as HTMLInputElement).checked;
-                        setCycleOverride(val);
-                        saveCurrent({ cycleStartOverride: val });
-                      }}
-                    />
-                    Bu günü zorla yeni döngü başlangıcı (1. Gün) yap
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    marginTop: "24px",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: BBT */}
-            {activeSheet === "bbt" && (
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "12px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: "600",
-                      color: "var(--text-primary)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={hasBbt}
-                      onChange={(e) => {
-                        const checked = (e.target as HTMLInputElement).checked;
-                        setHasBbt(checked);
-                        saveCurrent({
-                          bbt: checked
-                            ? {
-                                value: Math.round(
-                                  bbtValue * 100,
-                                ) as CentiCelsius,
-                                time: bbtTime,
-                              }
-                            : undefined,
-                        });
-                      }}
-                    />
-                    Ölçüm Kaydet
-                  </label>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <label
-                      style={{ fontSize: "11px", color: "var(--text-muted)" }}
-                    >
-                      Saat:
-                    </label>
-                    <input
-                      type="time"
-                      value={bbtTime}
-                      onChange={(e) => {
-                        const t = (e.target as HTMLInputElement).value;
-                        setBbtTime(t);
-                        saveCurrent({
-                          bbt: {
-                            value: Math.round(bbtValue * 100) as CentiCelsius,
-                            time: t,
-                            ...(disturbances.length > 0 ? { disturbances } : {}),
-                            ...(bbtExcluded ? { excluded: true } : {}),
-                          },
-                        });
-                      }}
-                      style={{
-                        backgroundColor: "var(--bg-elevated)",
-                        border: "1px solid var(--border-subtle)",
-                        color: "var(--text-primary)",
-                        padding: "4px 8px",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "12px",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {hasBbt && (
-                  <div>
-                    {/* Stepper Input */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "16px",
-                        margin: "16px 0",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleBbtStep(-0.05)}
-                        style={{
-                          width: "44px",
-                          height: "44px",
-                          borderRadius: "var(--radius-full)",
-                          border: "1px solid var(--border-strong)",
-                          backgroundColor: "var(--bg-elevated)",
-                          color: "var(--text-primary)",
-                          fontSize: "20px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        −
-                      </button>
-                      <span
-                        style={{
-                          fontSize: "32px",
-                          fontWeight: "800",
-                          color: "var(--accent-primary)",
-                          minWidth: "120px",
-                          textAlign: "center",
-                        }}
-                      >
-                        {bbtValue.toFixed(2)} °C
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleBbtStep(0.05)}
-                        style={{
-                          width: "44px",
-                          height: "44px",
-                          borderRadius: "var(--radius-full)",
-                          border: "1px solid var(--border-strong)",
-                          backgroundColor: "var(--bg-elevated)",
-                          color: "var(--text-primary)",
-                          fontSize: "20px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-
-                    {/* Disturbances */}
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--text-muted)",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      Bozucu Etkenler:
-                    </p>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "6px",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      {(
-                        Object.keys(STRINGS.disturbances) as DisturbanceType[]
-                      ).map((dKey) => (
-                        <Chip
-                          key={dKey}
-                          label={STRINGS.disturbances[dKey]}
-                          selected={disturbances.includes(dKey)}
-                          onToggle={() => handleDisturbanceToggle(dKey)}
-                        />
-                      ))}
-                    </div>
-
-                    <label
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--text-secondary)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        marginTop: "8px",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={bbtExcluded}
-                        onChange={(e) => {
-                          const val = (e.target as HTMLInputElement).checked;
-                          setBbtExcluded(val);
-                          saveCurrent({
-                            bbt: {
-                              value: Math.round(bbtValue * 100) as CentiCelsius,
-                              time: bbtTime,
-                              ...(disturbances.length > 0 ? { disturbances } : {}),
-                              excluded: val,
-                            },
-                          });
-                        }}
-                      />
-                      Ölçümü kaplama çizgisi hesabından hariç tut (parantezli)
-                    </label>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    marginTop: "24px",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: Mucus */}
-            {activeSheet === "mucus" && (
-              <div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Hissiyat:
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "6px",
-                    marginBottom: "12px",
-                  }}
-                >
-                  {(["dry", "nothing", "moist", "wet"] as MucusSensation[]).map(
-                    (sens) => (
-                      <Chip
-                        key={sens}
-                        label={STRINGS.mucusSensation[sens]}
-                        selected={mucusSens === sens}
-                        onToggle={() => {
-                          const next = mucusSens === sens ? undefined : sens;
-                          setMucusSens(next);
-                          if (next && mucusApp) {
-                            saveCurrent({
-                              mucus: {
-                                sensation: next,
-                                appearance: mucusApp,
-                              },
-                            });
-                          }
-                        }}
-                      />
-                    ),
-                  )}
-                </div>
-
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Görünüm:
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {(
-                    [
-                      "none",
-                      "thick",
-                      "creamy",
-                      "clear",
-                      "stretchy",
-                    ] as MucusAppearance[]
-                  ).map((app) => (
-                    <Chip
-                      key={app}
-                      label={STRINGS.mucusAppearance[app]}
-                      selected={mucusApp === app}
-                      onToggle={() => {
-                        const next = mucusApp === app ? undefined : app;
-                        setMucusApp(next);
-                        if (mucusSens && next) {
-                          saveCurrent({
-                            mucus: {
-                              sensation: mucusSens,
-                              appearance: next,
-                            },
-                          });
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    marginTop: "24px",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: Symptoms */}
-            {activeSheet === "symptoms" && (
-              <div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "10px",
-                  }}
-                >
-                  Hissedilen fiziksel belirtileri seçin:
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {(
-                    Object.keys(
-                      STRINGS.symptoms,
-                    ) as (keyof typeof STRINGS.symptoms)[]
-                  ).map((symKey) => (
-                    <Chip
-                      key={symKey}
-                      label={STRINGS.symptoms[symKey]}
-                      selected={symptoms.includes(symKey)}
-                      onToggle={() => handleSymptomToggle(symKey)}
-                    />
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    marginTop: "24px",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: Mood */}
-            {activeSheet === "mood" && (
-              <div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "10px",
-                  }}
-                >
-                  Bugünkü ruh halinizi seçin:
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {(
-                    Object.keys(STRINGS.mood) as (keyof typeof STRINGS.mood)[]
-                  ).map((mKey) => (
-                    <Chip
-                      key={mKey}
-                      label={STRINGS.mood[mKey]}
-                      selected={mood.includes(mKey)}
-                      onToggle={() => handleMoodToggle(mKey)}
-                    />
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    marginTop: "24px",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: Sex Activity & Note Tab */}
-            {activeSheet === "sex" && (
-              <div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "10px",
-                  }}
-                >
-                  Cinsel birliktelik:
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "6px",
-                    marginBottom: "16px",
-                  }}
-                >
-                  {(["none", "protected", "unprotected"] as const).map(
-                    (sVal) => (
-                      <Chip
-                        key={sVal}
-                        label={STRINGS.sex[sVal]}
-                        selected={sex === sVal}
-                        onToggle={() => {
-                          const next = sex === sVal ? undefined : sVal;
-                          setSex(next);
-                          saveCurrent({ sex: next });
-                        }}
-                      />
-                    ),
-                  )}
-                </div>
-
-                <div style={{ textAlign: "right", marginBottom: "16px" }}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSheet("note")}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--accent-primary)",
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                    }}
-                  >
-                    📝 Kişisel Not Yaz ›
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: Note */}
-            {activeSheet === "note" && (
-              <div>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-muted)",
-                    marginBottom: "8px",
-                  }}
-                >
-                  Bugün hakkında kişisel notlarınız:
-                </p>
-                <textarea
-                  value={note}
-                  placeholder="Bugün nasıl hissediyorsunuz? Not ekleyin..."
-                  onInput={(e) => {
-                    handleNoteChange((e.target as HTMLTextAreaElement).value);
-                  }}
-                  onBlur={handleNoteBlur}
-                  style={{
-                    width: "100%",
-                    minHeight: "100px",
-                    backgroundColor: "var(--bg-elevated)",
-                    border: "1px solid var(--border-subtle)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "10px",
-                    color: "var(--text-primary)",
-                    fontSize: "14px",
-                    fontFamily: "inherit",
-                    resize: "vertical",
-                  }}
-                />
-                <div style={{ marginTop: "10px", textAlign: "left", marginBottom: "16px" }}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSheet("sex")}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--accent-primary)",
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ‹ ❤️ Cinsel Birliktelik Ayarla
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Kaydet ve Kapat ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-
-            {/* Sheet Content: Phase Info Guide */}
-            {activeSheet === "phase_info" && (
-              <div>
-                {/* Tab Selector */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4, 1fr)",
-                    gap: "4px",
-                    marginBottom: "16px",
-                  }}
-                >
-                  {(["menstrual", "follicular", "ovulation", "luteal"] as const).map(
-                    (pKey) => {
-                      const item = PHASE_GUIDE_DATA[pKey];
-                      const isSelected = inspectedPhase === pKey;
-                      return (
-                        <button
-                          key={pKey}
-                          type="button"
-                          onClick={() => setInspectedPhase(pKey)}
-                          style={{
-                            padding: "8px 2px",
-                            border: isSelected
-                              ? `2px solid ${item.color}`
-                              : "1px solid var(--border-subtle)",
-                            borderRadius: "var(--radius-sm)",
-                            backgroundColor: isSelected
-                              ? `${item.color}22`
-                              : "var(--bg-elevated)",
-                            color: isSelected ? item.color : "var(--text-muted)",
-                            fontSize: "11px",
-                            fontWeight: isSelected ? "700" : "500",
-                            cursor: "pointer",
-                            textAlign: "center",
-                          }}
-                        >
-                          <div>{item.icon}</div>
-                          <div style={{ marginTop: "2px" }}>
-                            {item.title.split(" ")[0]}
-                          </div>
-                        </button>
-                      );
-                    },
-                  )}
-                </div>
-
-                {/* Selected Phase Detailed Breakdown */}
-                {(() => {
-                  const g = PHASE_GUIDE_DATA[inspectedPhase];
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      <div
-                        style={{
-                          padding: "12px",
-                          borderRadius: "var(--radius-md)",
-                          backgroundColor: `${g.color}14`,
-                          border: `1px solid ${g.color}40`,
-                        }}
-                      >
-                        <h4
-                          style={{
-                            fontSize: "15px",
-                            fontWeight: "700",
-                            color: g.color,
-                            margin: "0 0 4px",
-                          }}
-                        >
-                          {g.icon} {g.title}
-                        </h4>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-secondary)",
-                            fontWeight: "600",
-                            margin: "0 0 8px",
-                          }}
-                        >
-                          {g.subtitle}
-                        </p>
-                        <div
-                          style={{
-                            backgroundColor: "var(--bg-surface)",
-                            padding: "6px 10px",
-                            borderRadius: "var(--radius-sm)",
-                            fontSize: "11px",
-                            fontWeight: "700",
-                            color: g.color,
-                            display: "inline-block",
-                            border: "1px solid var(--border-subtle)",
-                          }}
-                        >
-                          📅 Bu Döngüdeki Tarihler:{" "}
-                          {inspectedPhase === "menstrual"
-                            ? phaseDetails.schedule.menstrual.dateRangeText
-                            : inspectedPhase === "follicular"
-                              ? phaseDetails.schedule.follicular.dateRangeText
-                              : inspectedPhase === "ovulation"
-                                ? `${phaseDetails.schedule.ovulationWindow.dateRangeText} (Tahmini Ovülasyon: ${phaseDetails.schedule.ovulationPeakText})`
-                                : phaseDetails.schedule.luteal.dateRangeText}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          backgroundColor: "var(--bg-elevated)",
-                          padding: "12px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--border-subtle)",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-primary)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          🧬 Hormonal Durum ve Biyoloji
-                        </strong>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.4",
-                            margin: 0,
-                          }}
-                        >
-                          {g.hormones}
-                        </p>
-                      </div>
-
-                      <div
-                        style={{
-                          backgroundColor: "var(--bg-elevated)",
-                          padding: "12px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--border-subtle)",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-primary)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          🧘 Vücut & Belirtiler
-                        </strong>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.4",
-                            margin: 0,
-                          }}
-                        >
-                          {g.body}
-                        </p>
-                      </div>
-
-                      <div
-                        style={{
-                          backgroundColor: "var(--bg-elevated)",
-                          padding: "12px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--border-subtle)",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-primary)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          🏃‍♀️ Egzersiz & Beslenme
-                        </strong>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.4",
-                            margin: "0 0 6px",
-                          }}
-                        >
-                          • <strong>Hareket:</strong> {g.exercise}
-                        </p>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.4",
-                            margin: 0,
-                          }}
-                        >
-                          • <strong>Beslenme:</strong> {g.nutrition}
-                        </p>
-                      </div>
-
-                      <div
-                        style={{
-                          backgroundColor: "var(--bg-elevated)",
-                          padding: "12px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--border-subtle)",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-primary)",
-                            display: "block",
-                            marginBottom: "4px",
-                          }}
-                        >
-                          🎯 Doğurganlık ve Semptotermal Kural
-                        </strong>
-                        <p
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.4",
-                            margin: 0,
-                          }}
-                        >
-                          {g.fertility}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <button
-                  type="button"
-                  onClick={() => setActiveSheet(null)}
-                  style={{
-                    width: "100%",
-                    marginTop: "20px",
-                    padding: "12px",
-                    backgroundColor: "var(--accent-primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                  }}
-                >
-                  Anladım ✓
-                </button>
-                <div style={{ height: "40px" }} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <TodaySheets
+        activeSheet={activeSheet}
+        onClose={() => setActiveSheet(null)}
+        onSwitchSheet={(sheet) => setActiveSheet(sheet)}
+        saveCurrent={saveCurrent}
+        bleeding={bleeding}
+        onBleedingToggle={handleBleedingToggle}
+        cycleOverride={cycleOverride}
+        setCycleOverride={setCycleOverride}
+        hasBbt={hasBbt}
+        setHasBbt={setHasBbt}
+        bbtValue={bbtValue}
+        setBbtValue={setBbtValue}
+        bbtTime={bbtTime}
+        setBbtTime={setBbtTime}
+        bbtExcluded={bbtExcluded}
+        setBbtExcluded={setBbtExcluded}
+        disturbances={disturbances}
+        onDisturbanceToggle={handleDisturbanceToggle}
+        onBbtStep={handleBbtStep}
+        clampBbt={clampBbt}
+        mucusSens={mucusSens}
+        setMucusSens={setMucusSens}
+        mucusApp={mucusApp}
+        setMucusApp={setMucusApp}
+        hasSavedMucus={Boolean(currentEntry?.mucus)}
+        cervix={cervix}
+        onCervixUpdate={handleCervixUpdate}
+        symptoms={symptoms}
+        onSymptomToggle={handleSymptomToggle}
+        mood={mood}
+        onMoodToggle={handleMoodToggle}
+        sex={sex}
+        setSex={setSex}
+        note={note}
+        onNoteChange={handleNoteChange}
+        onNoteBlur={handleNoteBlur}
+        inspectedPhase={inspectedPhase}
+        setInspectedPhase={setInspectedPhase}
+        phaseDetails={phaseDetails}
+      />
     </div>
   );
 }

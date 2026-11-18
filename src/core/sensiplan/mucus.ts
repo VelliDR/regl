@@ -1,4 +1,4 @@
-import { compareISODate } from "../date";
+import { addDays, compareISODate } from "../date";
 import { DayEntry, ISODate, MucusAppearance, MucusSensation } from "../types";
 
 export type SensiplanMucusCategory = "t" | "f" | "S" | "S_plus";
@@ -58,7 +58,9 @@ function getMucusRank(cat: SensiplanMucusCategory): number {
 export function evaluateMucusPeak(
   cycleEntries: readonly DayEntry[],
 ): MucusEvaluationResult {
-  const entriesWithMucus = cycleEntries.filter((e) => e.mucus !== undefined);
+  const entriesWithMucus = [...cycleEntries]
+    .filter((e) => e.mucus !== undefined)
+    .sort((a, b) => compareISODate(a.date, b.date));
 
   if (entriesWithMucus.length < 4) {
     return {
@@ -69,8 +71,22 @@ export function evaluateMucusPeak(
     };
   }
 
+  // Map consecutive calendar dates to their derived mucus rank
+  const mucusRankByDate = new Map<ISODate, number>();
+  let latestFertileDate: ISODate | undefined;
+
+  for (const e of entriesWithMucus) {
+    const rank = getMucusRank(
+      deriveMucusCategory(e.mucus?.sensation, e.mucus?.appearance),
+    );
+    mucusRankByDate.set(e.date, rank);
+    if (rank >= 2) {
+      latestFertileDate = e.date;
+    }
+  }
+
   // Find candidate peak days: days with high fertility mucus ('S' or 'S_plus')
-  // that are followed by 3 consecutive days of strictly lower quality mucus.
+  // followed by 3 consecutive CALENDAR days of observed strictly lower quality mucus.
   const candidates: {
     peakDayDate: ISODate;
     rank: number;
@@ -78,67 +94,59 @@ export function evaluateMucusPeak(
     postPeakDates: readonly ISODate[];
   }[] = [];
 
-  for (let i = 0; i < entriesWithMucus.length - 3; i++) {
-    const candidate = entriesWithMucus[i]!;
-    const candidateCategory = deriveMucusCategory(
-      candidate.mucus?.sensation,
-      candidate.mucus?.appearance,
-    );
-
-    const candidateRank = getMucusRank(candidateCategory);
+  for (const candidate of entriesWithMucus) {
+    const candidateRank = mucusRankByDate.get(candidate.date) ?? 0;
     // Peak day must be high quality ('S' or 'S_plus')
     if (candidateRank < 2) {
       continue;
     }
 
-    const dayPlus1 = entriesWithMucus[i + 1]!;
-    const dayPlus2 = entriesWithMucus[i + 2]!;
-    const dayPlus3 = entriesWithMucus[i + 3]!;
+    const d1 = addDays(candidate.date, 1);
+    const d2 = addDays(candidate.date, 2);
+    const d3 = addDays(candidate.date, 3);
 
-    const r1 = getMucusRank(
-      deriveMucusCategory(
-        dayPlus1.mucus?.sensation,
-        dayPlus1.mucus?.appearance,
-      ),
-    );
-    const r2 = getMucusRank(
-      deriveMucusCategory(
-        dayPlus2.mucus?.sensation,
-        dayPlus2.mucus?.appearance,
-      ),
-    );
-    const r3 = getMucusRank(
-      deriveMucusCategory(
-        dayPlus3.mucus?.sensation,
-        dayPlus3.mucus?.appearance,
-      ),
-    );
+    const r1 = mucusRankByDate.get(d1);
+    const r2 = mucusRankByDate.get(d2);
+    const r3 = mucusRankByDate.get(d3);
 
-    // Must be 3 consecutive days of lower quality mucus
+    // Must have actual mucus observations on all 3 consecutive calendar days
+    if (r1 === undefined || r2 === undefined || r3 === undefined) {
+      continue;
+    }
+
+    // Must be 3 consecutive calendar days of strictly lower quality mucus
     if (r1 < candidateRank && r2 < candidateRank && r3 < candidateRank) {
       candidates.push({
         peakDayDate: candidate.date,
         rank: candidateRank,
-        evaluationCompleteDate: dayPlus3.date,
-        postPeakDates: [dayPlus1.date, dayPlus2.date, dayPlus3.date],
+        evaluationCompleteDate: d3,
+        postPeakDates: [d1, d2, d3],
       });
     }
   }
 
-  if (candidates.length > 0) {
+  // Any subsequent high-quality mucus ('S' or 'S_plus') occurring after a candidate's
+  // completion date supersedes that earlier wave until a new 3-day dry-up finishes.
+  const validCandidates = latestFertileDate
+    ? candidates.filter(
+        (c) => compareISODate(c.evaluationCompleteDate, latestFertileDate) >= 0,
+      )
+    : candidates;
+
+  if (validCandidates.length > 0) {
     // Sensiplan: Peak day is the LAST day of the highest quality mucus observed
-    candidates.sort((a, b) => {
+    validCandidates.sort((a, b) => {
       if (b.rank !== a.rank) return b.rank - a.rank;
       return compareISODate(b.peakDayDate, a.peakDayDate);
     });
 
-    const best = candidates[0]!;
+    const best = validCandidates[0]!;
     return {
       isConfirmed: true,
       peakDayDate: best.peakDayDate,
       evaluationCompleteDate: best.evaluationCompleteDate,
       postPeakDates: best.postPeakDates,
-      explanation: `Mukus kuralı (M2) sağlandı: ${best.peakDayDate} mukus zirve günü olarak saptandı ve ardından 3 gün boyunca kuruma/düşüş doğrulandı.`,
+      explanation: `Mukus kuralı (M2) sağlandı: ${best.peakDayDate} mukus zirve günü olarak saptandı ve ardından kesintisiz 3 takvim günü kuruma/düşüş doğrulandı.`,
     };
   }
 
@@ -146,6 +154,6 @@ export function evaluateMucusPeak(
     isConfirmed: false,
     postPeakDates: [],
     explanation:
-      "Mukus zirvesi ve ardından gelen 3 günlük kuruma henüz doğrulanmadı.",
+      "Mukus zirvesi ve ardından gelen ardışık 3 günlük kuruma henüz doğrulanmadı.",
   };
 }

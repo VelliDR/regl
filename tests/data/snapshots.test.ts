@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import "fake-indexeddb/auto";
 import { closeDb, getDb } from "../../src/data/db";
+import { generateDek } from "../../src/data/crypto";
 import { dayRepository, DEFAULT_USER_SETTINGS } from "../../src/data/repo";
 import { parseISODate } from "../../src/core/date";
 import { DayEntry } from "../../src/core/types";
 import {
   createSnapshotNow,
+  decryptAllEncryptedSnapshots,
   deleteSnapshot,
+  encryptAllPlaintextSnapshots,
   loadSnapshots,
   maybeCreateWeeklySnapshot,
   restoreSnapshot,
@@ -14,13 +17,15 @@ import {
 
 describe("Yerel Güvenlik Snapshots (snapshots.ts)", () => {
   beforeEach(async () => {
+    dayRepository.clearActiveDek();
     closeDb();
     const db = await getDb();
     await db.delete("meta", "local_snapshots");
-    await dayRepository.clearAllDays();
+    await dayRepository.clearAllData();
   });
 
   afterEach(() => {
+    dayRepository.clearActiveDek();
     closeDb();
   });
 
@@ -113,5 +118,60 @@ describe("Yerel Güvenlik Snapshots (snapshots.ts)", () => {
     loaded = await loadSnapshots();
     expect(loaded.length).toBe(1);
     expect(loaded[0]?.id).toBe(snap2.id);
+  });
+
+  it("DEK aktifken snapshot şifrelenmeli, düz metin payloadJson saklanmamalı ve geri yüklenebilmelidir", async () => {
+    const dek = await generateDek();
+    dayRepository.setActiveDek(dek);
+
+    const days: DayEntry[] = [
+      {
+        date: parseISODate("2026-10-05"),
+        bleeding: "heavy",
+        note: "Şifreli snapshot testi",
+        updatedAt: 500,
+      },
+    ];
+
+    const snap = await createSnapshotNow(days, DEFAULT_USER_SETTINGS);
+    expect(snap.payloadJson).toBeUndefined();
+    expect(snap.encryptedPayload).toBeDefined();
+
+    // DEK yokken şifreli snapshot çözülememelidir
+    dayRepository.clearActiveDek();
+    await expect(restoreSnapshot(snap.id, "replace")).rejects.toThrow(
+      /Kasa kilitli/,
+    );
+
+    // DEK geri yüklendiğinde snapshot geri yüklenebilmelidir
+    dayRepository.setActiveDek(dek);
+    await dayRepository.clearAllDays();
+    const summary = await restoreSnapshot(snap.id, "replace");
+    expect(summary.importedCount).toBe(1);
+
+    const restored = await dayRepository.getAllDays();
+    expect(restored[0]?.note).toBe("Şifreli snapshot testi");
+  });
+
+  it("encryptAllPlaintextSnapshots ve decryptAllEncryptedSnapshots mevcut snapshot'ları dönüştürmelidir", async () => {
+    const days: DayEntry[] = [
+      { date: parseISODate("2026-10-08"), bleeding: "light", updatedAt: 100 },
+    ];
+    await createSnapshotNow(days, DEFAULT_USER_SETTINGS);
+
+    const dek = await generateDek();
+    const encCount = await encryptAllPlaintextSnapshots(dek);
+    expect(encCount).toBe(1);
+
+    let loaded = await loadSnapshots();
+    expect(loaded[0]?.payloadJson).toBeUndefined();
+    expect(loaded[0]?.encryptedPayload).toBeDefined();
+
+    const decCount = await decryptAllEncryptedSnapshots(dek);
+    expect(decCount).toBe(1);
+
+    loaded = await loadSnapshots();
+    expect(loaded[0]?.payloadJson).toBeDefined();
+    expect(loaded[0]?.encryptedPayload).toBeUndefined();
   });
 });

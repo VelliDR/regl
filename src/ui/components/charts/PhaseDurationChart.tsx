@@ -1,6 +1,7 @@
-import { daysBetween } from "../../../core/date";
+import { compareISODate, daysBetween } from "../../../core/date";
 import { Cycle } from "../../../core/cycles";
-import { evaluateCycleState } from "../../../core/evaluate";
+import { getCycleEntries } from "../../../core/evaluate";
+import { evaluateTemperatureShift } from "../../../core/sensiplan/temperature";
 import { DayEntry } from "../../../core/types";
 
 interface PhaseDurationChartProps {
@@ -36,13 +37,18 @@ export function PhaseDurationChart({
     );
   }
 
+  const sortedEntries = [...entries].sort((a, b) =>
+    compareISODate(a.date, b.date),
+  );
+
   // Calculate phase durations for the last 6 completed cycles
   const phaseData = completedCycles.slice(-6).map((c) => {
     const totalLen = c.length!;
-    const evalResult = evaluateCycleState(entries, c.startDate, {
-      trackingMode: "symptothermal",
-    });
-    const shiftDate = evalResult.sensiplan?.temperature.firstHighDayDate;
+    const cycleEntries = getCycleEntries(sortedEntries, c);
+    const tempEval = evaluateTemperatureShift(cycleEntries);
+    const shiftDate = tempEval.isConfirmed
+      ? tempEval.firstHighDayDate
+      : undefined;
     const shiftDay = shiftDate
       ? daysBetween(c.startDate, shiftDate) + 1
       : undefined;
@@ -86,6 +92,8 @@ export function PhaseDurationChart({
     phaseData.reduce((acc, p) => acc + p.follicularDays, 0) / phaseData.length
   ).toFixed(1);
 
+  const maxScale = Math.max(40, ...phaseData.map((p) => p.totalLen));
+
   return (
     <div>
       <div
@@ -97,7 +105,6 @@ export function PhaseDurationChart({
         }}
       >
         {phaseData.map((p) => {
-          const maxScale = 40;
           const folPct = (p.follicularDays / maxScale) * 100;
           const lutPct = (p.lutealDays / maxScale) * 100;
 

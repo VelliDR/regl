@@ -123,6 +123,45 @@ describe("Döngü Bölümleme (cycles.ts)", () => {
       expect(result.completedCycles[1]?.isOutlier).toBe(false);
       expect(result.completedCycles[2]?.isOutlier).toBe(true); // 78 gün -> aykırı
     });
+
+    it("Yalnızca 1 normal ve 1 çok uzun (80 gün) döngü olduğunda uzun döngü kendi medyanını şişirip aykırı tespiti atlamamalıdır", () => {
+      const entries: DayEntry[] = [
+        createEntry("2026-01-01", "heavy"),
+        createEntry("2026-01-29", "heavy"), // 28 gün
+        createEntry("2026-04-19", "heavy"), // 80 gün
+        createEntry("2026-05-17", "heavy"),
+      ];
+
+      const result = partitionCycles(entries);
+      expect(result.completedCycles[0]?.isOutlier).toBe(false);
+      expect(result.completedCycles[1]?.isOutlier).toBe(true);
+    });
+  });
+
+  describe("Kanama Boşluğu ve Tekilleştirme Kenar Durumları", () => {
+    it("14. gün civarında tek günlük boşluk (veya eksik kayıt) yeni döngü başlatmamalıdır (en az 2 kanamasız gün şartı)", () => {
+      const entries: DayEntry[] = [
+        createEntry("2026-01-01", "heavy"),
+        createEntry("2026-01-13", "light"), // 13. gün kanama
+        // 14. gün boş (kayıt yok)
+        createEntry("2026-01-15", "light"), // 15. gün tekrar kanama -> yalnızca 1 gün boşluk!
+      ];
+
+      const result = partitionCycles(entries);
+      expect(result.allCycles.length).toBe(1);
+      expect(result.completedCycles.length).toBe(0);
+    });
+
+    it("Aynı tarihe sahip mükerrer kayıtlar 0 günlük döngü oluşturmamalıdır", () => {
+      const entries: DayEntry[] = [
+        createEntry("2026-01-01", "heavy", true),
+        createEntry("2026-01-01", "heavy", true),
+      ];
+
+      const result = partitionCycles(entries);
+      expect(result.allCycles.length).toBe(1);
+      expect(result.completedCycles.length).toBe(0);
+    });
   });
 
   describe("Property Tests", () => {

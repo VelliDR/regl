@@ -1,6 +1,10 @@
 import { useEffect, useState } from "preact/hooks";
-import { settingsSignal } from "../../app/state";
-import { unwrapDekFromEnvelope, WrappedKeyEnvelope } from "../../data/crypto";
+import {
+  loadLockThrottleState,
+  saveLockThrottleState,
+  settingsSignal,
+  unlockVaultWithPassphrase,
+} from "../../app/state";
 
 interface LockScreenProps {
   readonly onUnlock: () => void;
@@ -14,6 +18,25 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   const [failedAttempts, setFailedAttempts] = useState<number>(0);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
 
+  // Restore persisted brute-force throttle on mount so page reload doesn't bypass cooldown
+  useEffect(() => {
+    let active = true;
+    loadLockThrottleState().then((throttle) => {
+      if (!active) return;
+      setFailedAttempts(throttle.failedAttempts);
+      if (throttle.lockUntil > Date.now()) {
+        const remaining = Math.ceil((throttle.lockUntil - Date.now()) / 1000);
+        setCooldownRemaining(remaining);
+        setErrorMsg(
+          `Güvenlik bekleme süresi devam ediyor (${remaining} saniye).`,
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (cooldownRemaining <= 0) return;
     const timer = window.setInterval(() => {
@@ -24,41 +47,52 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
 
   const handleUnlock = async (e: Event) => {
     e.preventDefault();
-    if (!passphrase.trim() || cooldownRemaining > 0) return;
+    if (!passphrase || cooldownRemaining > 0) return;
 
     setIsVerifying(true);
     setErrorMsg(null);
 
     try {
       if (!settings.lockEnvelopeJson) {
-        // Fallback if no envelope saved yet
-        onUnlock();
+        setErrorMsg(
+          "Kasa anahtar zarfı eksik veya bozuk. Güvenlik nedeniyle kilit açılamıyor.",
+        );
         return;
       }
 
-      const envelope: WrappedKeyEnvelope = JSON.parse(
-        settings.lockEnvelopeJson,
-      );
-      await unwrapDekFromEnvelope(passphrase.trim(), envelope);
+      await unlockVaultWithPassphrase(passphrase);
+      setPassphrase("");
       setFailedAttempts(0);
       onUnlock();
     } catch {
       const nextFailed = failedAttempts + 1;
       setFailedAttempts(nextFailed);
 
-      if (nextFailed >= 5) {
-        setCooldownRemaining(30);
+      let cooldownSec = 0;
+      if (nextFailed >= 7) {
+        cooldownSec = 60;
+        setErrorMsg(
+          "Çok fazla hatalı deneme! Güvenliğiniz için 60 saniye kilitlendi.",
+        );
+      } else if (nextFailed >= 5) {
+        cooldownSec = 30;
         setErrorMsg(
           "Çok sayıda hatalı deneme! Güvenliğiniz için 30 saniye kilitlendi.",
         );
       } else if (nextFailed >= 3) {
-        setCooldownRemaining(5);
+        cooldownSec = 5;
         setErrorMsg(
           "Hatalı deneme. Güvenlik nedeniyle 5 saniye beklemeniz gerekiyor.",
         );
       } else {
         setErrorMsg("Geçersiz parola veya PIN. Lütfen tekrar deneyin.");
       }
+
+      setCooldownRemaining(cooldownSec);
+      await saveLockThrottleState({
+        failedAttempts: nextFailed,
+        lockUntil: cooldownSec > 0 ? Date.now() + cooldownSec * 1000 : 0,
+      });
     } finally {
       setIsVerifying(false);
     }
@@ -108,6 +142,9 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
             value={passphrase}
             autoFocus
             disabled={cooldownRemaining > 0}
+            onInput={(e) =>
+              setPassphrase((e.target as HTMLInputElement).value)
+            }
             onChange={(e) =>
               setPassphrase((e.target as HTMLInputElement).value)
             }

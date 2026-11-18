@@ -8,6 +8,17 @@ export interface CalendarEventOptions {
   readonly time?: string; // 'HH:MM', default: '09:00'
   readonly durationMinutes?: number; // default: 30
   readonly alarmMinutesBefore?: number; // default: 0
+  readonly recurrenceRule?: string | undefined; // e.g. 'FREQ=DAILY'
+}
+
+let icsUidCounter = 0;
+
+function escapeIcsText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\r?\n/g, "\\n")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,");
 }
 
 /**
@@ -18,15 +29,23 @@ export interface CalendarEventOptions {
 export function generateIcsCalendarEvent(
   options: CalendarEventOptions,
 ): string {
-  const title = options.title ?? "Hatırlatıcı";
-  const description = options.description ?? "Döngü takip hatırlatıcısı.";
+  const title = escapeIcsText(options.title ?? "Hatırlatıcı");
+  const description = escapeIcsText(
+    options.description ?? "Döngü takip hatırlatıcısı.",
+  );
   const time = options.time ?? "09:00";
   const duration = options.durationMinutes ?? 30;
   const alarmBefore = options.alarmMinutesBefore ?? 0;
 
   const timeParts = time.split(":").map(Number);
-  const hours = timeParts[0] ?? 9;
-  const minutes = timeParts[1] ?? 0;
+  const rawHours = timeParts[0] ?? 9;
+  const rawMinutes = timeParts[1] ?? 0;
+  const hours = Number.isFinite(rawHours)
+    ? Math.max(0, Math.min(23, rawHours))
+    : 9;
+  const minutes = Number.isFinite(rawMinutes)
+    ? Math.max(0, Math.min(59, rawMinutes))
+    : 0;
   const dateStr = options.startDate.replace(/-/g, "");
 
   const startFormatted = `${dateStr}T${String(hours).padStart(2, "0")}${String(minutes).padStart(2, "0")}00`;
@@ -49,10 +68,11 @@ export function generateIcsCalendarEvent(
     "PRODID:-//Regl App//TR",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
-    `UID:${dateStr}-${Date.now()}@regl.local`,
+    `UID:${dateStr}-${Date.now()}-${++icsUidCounter}@regl.local`,
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z`,
     `DTSTART:${startFormatted}`,
     `DTEND:${endFormatted}`,
+    ...(options.recurrenceRule ? [`RRULE:${options.recurrenceRule}`] : []),
     `SUMMARY:${title}`,
     `DESCRIPTION:${description}`,
     "BEGIN:VALARM",
@@ -87,26 +107,6 @@ export function exportCalendarEventToDevice(
 }
 
 /**
- * Generates an Android Calendar intent URL for instant native calendar opening
- * if the browser supports intent links.
- */
-export function createAndroidCalendarIntentUrl(
-  options: CalendarEventOptions,
-): string {
-  const title = encodeURIComponent(options.title ?? "Hatırlatıcı");
-  const description = encodeURIComponent(
-    options.description ?? "Döngü takip hatırlatıcısı.",
-  );
-  const dateParts = options.startDate.split("-");
-  const y = dateParts[0];
-  const m = dateParts[1];
-  const d = dateParts[2];
-
-  // Google Calendar web / Android intent URI
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${description}&dates=${y}${m}${d}/${y}${m}${d}`;
-}
-
-/**
  * Evaluates pending in-app reminder notices for TodayScreen.
  */
 export type InAppNoticeType =
@@ -122,16 +122,22 @@ export interface InAppNotice {
   readonly message: string;
 }
 
+export interface InAppNoticeOptions {
+  readonly reminderBbtEnabled?: boolean | undefined;
+  readonly reminderPeriodDaysBefore?: number | undefined;
+}
+
 export function evaluateInAppNotices(
   hasTodayEntry: boolean,
   daysUntilPeriod?: number,
   lastBackupDate?: string,
   entryCount?: number,
+  options?: InAppNoticeOptions,
 ): InAppNotice[] {
   const notices: InAppNotice[] = [];
 
-  // 1. Missing entry today notice
-  if (!hasTodayEntry) {
+  // 1. Missing entry today notice (respects reminderBbtEnabled setting)
+  if (!hasTodayEntry && options?.reminderBbtEnabled !== false) {
     notices.push({
       id: "missing-today",
       type: "missing-today",
@@ -140,11 +146,13 @@ export function evaluateInAppNotices(
     });
   }
 
-  // 2. Period approaching notice (within 2 days)
+  // 2. Period approaching notice (configurable lead days, default 2)
+  const leadDays = options?.reminderPeriodDaysBefore ?? 2;
   if (
+    leadDays >= 0 &&
     daysUntilPeriod !== undefined &&
     daysUntilPeriod >= 0 &&
-    daysUntilPeriod <= 2
+    daysUntilPeriod <= leadDays
   ) {
     notices.push({
       id: "period-approaching",
@@ -177,20 +185,30 @@ export function evaluateInAppNotices(
         type: "backup-due",
         title: "Verilerinizi Güvene Alın",
         message:
-          "İlk yedeğinizi almak için Ayarlar bölümünden JSON yedeği indirebilirsiniz.",
+          "İlk yedeğinizi almak için Ayarlar bölümünden JSON veya .reglvault yedeği indirebilirsiniz.",
       });
     } else {
       const lastBackupTime = new Date(lastBackupDate).getTime();
-      const daysSince = Math.floor(
-        (Date.now() - lastBackupTime) / (1000 * 60 * 60 * 24),
-      );
-      if (daysSince >= 14) {
+      if (Number.isNaN(lastBackupTime)) {
         notices.push({
           id: "backup-due",
           type: "backup-due",
           title: "Yedekleme Hatırlatıcısı",
-          message: `Son yedeklemenin üzerinden ${daysSince} gün geçti. Veri kaybını önlemek için lütfen yeni bir yedek alın.`,
+          message:
+            "Yedekleme tarihiniz doğrulanamadı. Veri kaybını önlemek için lütfen yeni bir yedek alın.",
         });
+      } else {
+        const daysSince = Math.floor(
+          (Date.now() - lastBackupTime) / (1000 * 60 * 60 * 24),
+        );
+        if (daysSince >= 14) {
+          notices.push({
+            id: "backup-due",
+            type: "backup-due",
+            title: "Yedekleme Hatırlatıcısı",
+            message: `Son yedeklemenin üzerinden ${daysSince} gün geçti. Veri kaybını önlemek için lütfen yeni bir yedek alın.`,
+          });
+        }
       }
     }
   }

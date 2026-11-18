@@ -1,3 +1,4 @@
+import { compareISODate, daysBetween } from "../date";
 import { CentiCelsius, DayEntry, ISODate } from "../types";
 
 export interface TemperatureEvaluationResult {
@@ -12,6 +13,30 @@ export interface TemperatureEvaluationResult {
   readonly explanation: string;
 }
 
+function isThermalWindowContinuous(
+  sixLows: readonly DayEntry[],
+  highReadings: readonly DayEntry[],
+): boolean {
+  for (let i = 1; i < sixLows.length; i++) {
+    const gap = daysBetween(sixLows[i - 1]!.date, sixLows[i]!.date);
+    if (gap <= 0 || gap > 7) return false;
+  }
+
+  const lastLow = sixLows[sixLows.length - 1];
+  const firstHigh = highReadings[0];
+  if (!lastLow || !firstHigh) return false;
+
+  const transitionGap = daysBetween(lastLow.date, firstHigh.date);
+  if (transitionGap <= 0 || transitionGap > 4) return false;
+
+  for (let i = 1; i < highReadings.length; i++) {
+    const gap = daysBetween(highReadings[i - 1]!.date, highReadings[i]!.date);
+    if (gap <= 0 || gap > 3) return false;
+  }
+
+  return true;
+}
+
 /**
  * Validates Sensiplan temperature shift rules (T1, T2, T3, T4, T5, T6).
  * Temperature measurements are in CentiCelsius (e.g. 36.65 °C = 3665).
@@ -21,9 +46,9 @@ export function evaluateTemperatureShift(
   cycleEntries: readonly DayEntry[],
 ): TemperatureEvaluationResult {
   // Filter valid, non-excluded temperature readings in chronological order
-  const validTempEntries = cycleEntries.filter(
-    (e) => e.bbt !== undefined && !e.bbt.excluded,
-  );
+  const validTempEntries = [...cycleEntries]
+    .filter((e) => e.bbt !== undefined && !e.bbt.excluded)
+    .sort((a, b) => compareISODate(a.date, b.date));
 
   if (validTempEntries.length < 9) {
     // Need at least 6 low + 3 high measurements
@@ -72,7 +97,12 @@ export function evaluateTemperatureShift(
     const sixLowDates = sixLows.map((e) => e.date);
 
     // Rule T2 (Standard)
-    if (m1Val > coverline && m2Val > coverline && m3Val >= coverline + 20) {
+    if (
+      m1Val > coverline &&
+      m2Val > coverline &&
+      m3Val >= coverline + 20 &&
+      isThermalWindowContinuous(sixLows, [m1, m2, m3])
+    ) {
       return {
         isConfirmed: true,
         coverline,
@@ -96,7 +126,10 @@ export function evaluateTemperatureShift(
       m3Val < coverline + 20
     ) {
       const m4 = remainingEntries[3]!;
-      if (m4.bbt!.value > coverline) {
+      if (
+        m4.bbt!.value > coverline &&
+        isThermalWindowContinuous(sixLows, [m1, m2, m3, m4])
+      ) {
         return {
           isConfirmed: true,
           coverline,
@@ -119,7 +152,11 @@ export function evaluateTemperatureShift(
       if (m1Val > coverline && m2Val <= coverline) {
         // Need m3 > coverline and m4 >= coverline + 20
         const m4 = remainingEntries[3]!;
-        if (m3Val > coverline && m4.bbt!.value >= coverline + 20) {
+        if (
+          m3Val > coverline &&
+          m4.bbt!.value >= coverline + 20 &&
+          isThermalWindowContinuous(sixLows, [m1, m2, m3, m4])
+        ) {
           return {
             isConfirmed: true,
             coverline,
@@ -136,7 +173,10 @@ export function evaluateTemperatureShift(
       // Case B: 3rd measurement dropped to/below coverline
       if (m1Val > coverline && m2Val > coverline && m3Val <= coverline) {
         const m4 = remainingEntries[3]!;
-        if (m4.bbt!.value >= coverline + 20) {
+        if (
+          m4.bbt!.value >= coverline + 20 &&
+          isThermalWindowContinuous(sixLows, [m1, m2, m3, m4])
+        ) {
           return {
             isConfirmed: true,
             coverline,

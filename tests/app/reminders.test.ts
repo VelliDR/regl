@@ -91,5 +91,41 @@ describe("Hatırlatıcılar ve Takvim Entegrasyonu (reminders.ts)", () => {
       const noticesEstablished = evaluateInAppNotices(true, 10, undefined, 5);
       expect(noticesEstablished.some((n) => n.id === "backup-due")).toBe(true);
     });
+
+    it("reminderBbtEnabled=false iken eksik kayıt bildirimi üretilmemeli ve reminderPeriodDaysBefore eşiği kullanılmalıdır", () => {
+      const noticesDisabled = evaluateInAppNotices(false, 4, "2026-10-10", 5, {
+        reminderBbtEnabled: false,
+        reminderPeriodDaysBefore: 4,
+      });
+      expect(noticesDisabled.some((n) => n.id === "missing-today")).toBe(false);
+      expect(noticesDisabled.some((n) => n.id === "period-approaching")).toBe(
+        true,
+      );
+    });
+
+    it("Geçersiz lastBackupDate ve RFC 5545 özel karakterleri güvenli işlenmelidir", () => {
+      const notices = evaluateInAppNotices(true, 10, "invalid-date", 5);
+      expect(notices.some((n) => n.id === "backup-due")).toBe(true);
+
+      const ics = generateIcsCalendarEvent({
+        startDate: parseISODate("2026-10-20"),
+        title: "Hatırlatıcı, Önemli; Test",
+        description: "Satır 1\nSatır 2; devam",
+      });
+      expect(ics).toContain("SUMMARY:Hatırlatıcı\\, Önemli\\; Test");
+      expect(ics).toContain("DESCRIPTION:Satır 1\\nSatır 2\\; devam");
+    });
+
+    it("recurrenceRule belirtildiğinde .ics çıktısına RRULE satırı eklemelidir", () => {
+      const ics = generateIcsCalendarEvent({
+        startDate: parseISODate("2026-10-20"),
+        time: "07:15",
+        title: "BBT Ölçüm Hatırlatıcısı",
+        description: "Günlük ölçüm",
+        recurrenceRule: "FREQ=DAILY",
+      });
+      expect(ics).toContain("DTSTART:20261020T071500");
+      expect(ics).toContain("RRULE:FREQ=DAILY");
+    });
   });
 });
